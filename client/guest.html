@@ -243,6 +243,13 @@
   let timerInterval = null;
   let savedCode = null;
 
+  // Pre-fill code from ?code= URL parameter (QR code scan)
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlCode = urlParams.get('code');
+  if (urlCode) {
+    document.getElementById('voucher-code').value = urlCode.toUpperCase();
+  }
+
   // Check if we have a saved session
   const savedSession = localStorage.getItem('wifi_session');
   if (savedSession) {

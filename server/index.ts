@@ -6,11 +6,14 @@ import { createServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
 
 import { startExpiryJob } from './expiry';
+import { startBandwidthSimulator } from './bandwidth';
 import authRoutes from './routes/auth';
 import roomRoutes from './routes/rooms';
 import voucherRoutes from './routes/vouchers';
 import sessionRoutes from './routes/sessions';
 import vapRoutes from './routes/vaps';
+import analyticsRoutes from './routes/analytics';
+import auditRoutes from './routes/audit';
 import { errorHandler } from './middleware/errorHandler';
 
 dotenv.config();
@@ -42,6 +45,8 @@ app.use('/api/rooms', roomRoutes);
 app.use('/api/vouchers', voucherRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/vaps', vapRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/audit', auditRoutes);
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -79,4 +84,5 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`   Network: http://192.168.1.149:${PORT}`);
   console.log(`   Guest portal: http://192.168.1.149:${PORT}/guest\n`);
   startExpiryJob();
+  startBandwidthSimulator();
 });

@@ -1,653 +1,1150 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Hotel WiFi Manager</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,sans-serif;background:#f1f5f9;color:#1e293b}
-.hidden{display:none!important}
-nav{background:#fff;border-bottom:1px solid #e2e8f0;padding:0 16px;height:56px;display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:99;flex-wrap:wrap}
-nav .brand{font-weight:700;margin-right:6px;white-space:nowrap}
-nav button{padding:6px 12px;border:none;border-radius:6px;cursor:pointer;background:#f1f5f9;color:#64748b;font-size:13px}
-nav button.active{background:#2563eb;color:#fff}
-nav #logout-btn{margin-left:auto;background:#fff;border:1px solid #e2e8f0}
-#login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f1f5f9}
-.login-box{background:#fff;padding:40px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.1);width:360px}
-.login-box h1{font-size:22px;margin-bottom:4px}
-.login-box p{color:#64748b;margin-bottom:24px;font-size:14px}
-.field{margin-bottom:14px}
-.field label{display:block;font-size:13px;font-weight:600;margin-bottom:4px}
-.field input,.field select{width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px}
-.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600}
-.btn-blue{background:#2563eb;color:#fff}
-.btn-red{background:#dc2626;color:#fff}
-.btn-gray{background:#f1f5f9;border:1px solid #e2e8f0;color:#1e293b}
-.btn-green{background:#16a34a;color:#fff}
-.btn-full{width:100%;padding:10px}
-.page{padding:20px;max-width:1100px;margin:0 auto}
-.page-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px}
-.page-head h2{font-size:20px}
-.stats{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px}
-.stat{background:#fff;border-radius:8px;padding:14px 18px;min-width:150px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.stat .num{font-size:26px;font-weight:700}
-.stat .lbl{font-size:12px;color:#64748b;margin-top:2px}
-.tbl-wrap{background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);overflow-x:auto;margin-bottom:20px}
-table{width:100%;border-collapse:collapse;font-size:14px}
-th{padding:10px 14px;text-align:left;background:#f8fafc;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
-td{padding:10px 14px;border-top:1px solid #f1f5f9;vertical-align:middle}
-/* Sessions table column widths */
-#sessions-body tr td:nth-child(1){width:50px;font-weight:700;color:#2563eb}
-#sessions-body tr td:nth-child(2){width:60px}
-#sessions-body tr td:nth-child(3){width:130px}
-#sessions-body tr td:nth-child(4){max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#sessions-body tr td:nth-child(5){width:120px}
-#sessions-body tr td:nth-child(6){width:90px}
-#sessions-body tr td:nth-child(7){width:90px}
-#sessions-body tr td:nth-child(8){width:100px}
-#sessions-body tr td:nth-child(9){width:150px;white-space:nowrap}
-.card{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:20px}
-.card h3{font-size:15px;margin-bottom:14px}
-.row{display:flex;flex-wrap:wrap;gap:12px}
-.row .field{flex:1;min-width:130px}
-.badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600}
-.green{background:#dcfce7;color:#16a34a}
-.yellow{background:#fef3c7;color:#d97706}
-.red{background:#fee2e2;color:#dc2626}
-.gray{background:#f1f5f9;color:#64748b}
-.blue{background:#dbeafe;color:#2563eb}
-.err{color:#dc2626;font-size:13px;margin-top:8px}
-.ok{color:#16a34a;font-size:13px;margin-top:8px}
-#events-list{list-style:none;font-size:13px;max-height:200px;overflow-y:auto}
-#events-list li{padding:5px 0;border-bottom:1px solid #f1f5f9;color:#475569}
-/* Topology */
-.topo{display:flex;flex-direction:column;align-items:center;gap:0;padding:20px}
-.topo-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-.topo-box{background:#fff;border:2px solid #e2e8f0;border-radius:8px;padding:10px 16px;text-align:center;font-size:13px;min-width:90px}
-.topo-box.internet{background:#dbeafe;border-color:#2563eb;font-weight:700}
-.topo-box.router{background:#fef3c7;border-color:#d97706;font-weight:700}
-.topo-box.vap{background:#dcfce7;border-color:#16a34a}
-.topo-box.device{background:#f1f5f9;border-color:#94a3b8;font-size:12px}
-.topo-box.blocked{background:#fee2e2;border-color:#dc2626}
-.topo-arrow{text-align:center;font-size:20px;color:#94a3b8;margin:4px 0}
-.topo-label{font-size:11px;color:#64748b;margin-top:2px}
-</style>
-</head>
-<body>
-
-<!-- LOGIN -->
-<div id="login-wrap">
-  <div class="login-box">
-    <h1>🏨 Hotel WiFi Manager</h1>
-    <p>Admin Portal</p>
-    <form id="login-form">
-      <div class="field"><label>Username</label><input id="u" type="text" value="admin" required/></div>
-      <div class="field"><label>Password</label><input id="p" type="password" required/></div>
-      <button class="btn btn-blue btn-full" type="submit">Sign In</button>
-      <div class="err hidden" id="login-err"></div>
-    </form>
-  </div>
-</div>
-
-<!-- DASHBOARD -->
-<div id="dash" class="hidden">
-  <nav>
-    <span class="brand">🏨 Hotel WiFi</span>
-    <button class="active" onclick="showTab('overview')">Overview</button>
-    <button onclick="showTab('sessions')">Live Sessions</button>
-    <button onclick="showTab('history')">History</button>
-    <button onclick="showTab('vaps')">VAP / Isolation</button>
-    <button onclick="showTab('vouchers')">Vouchers</button>
-    <button onclick="showTab('rooms')">Rooms</button>
-    <button onclick="showTab('topology')">Network Map</button>
-    <button onclick="showTab('settings')">Settings</button>
-    <button id="logout-btn" onclick="logout()">Logout</button>
-  </nav>
-
-  <!-- OVERVIEW -->
-  <div id="tab-overview" class="page">
-    <div class="page-head">
-      <h2>Overview <span style="font-size:12px;color:#16a34a">● LIVE</span></h2>
-      <button class="btn btn-green" onclick="runDemo()">🚀 Demo Mode</button>
-    </div>
-    <div class="stats">
-      <div class="stat"><div class="num" id="s-rooms">—</div><div class="lbl">Rooms</div></div>
-      <div class="stat"><div class="num" id="s-devices">—</div><div class="lbl">Connected Devices</div></div>
-      <div class="stat"><div class="num" id="s-vouchers">—</div><div class="lbl">Available Vouchers</div></div>
-      <div class="stat"><div class="num" id="s-throttled">—</div><div class="lbl">Throttled</div></div>
-      <div class="stat"><div class="num" id="s-isolated">—</div><div class="lbl">Isolated VAPs</div></div>
-      <div class="stat"><div class="num" id="s-blocked">—</div><div class="lbl">Isolation Events</div></div>
-    </div>
-    <div class="card"><h3>Recent Events</h3><ul id="events-list"><li>No events yet</li></ul></div>
-  </div>
-
-  <!-- LIVE SESSIONS -->
-  <div id="tab-sessions" class="page hidden">
-    <div class="page-head"><h2>Live Sessions</h2><button class="btn btn-gray" onclick="loadSessions()">↻ Refresh</button></div>
-    <div class="tbl-wrap"><table id="sessions-table">
-      <thead><tr><th>#ID</th><th>Room</th><th>VAP/VLAN</th><th>Device</th><th>IP Address</th><th>Connected</th><th>Bandwidth</th><th>Status</th><th>Action</th></tr></thead>
-      <tbody id="sessions-body"></tbody>
-    </table></div>
-    <div class="card"><h3>🎮 Simulate Bandwidth (Demo)</h3>
-      <p style="font-size:13px;color:#64748b;margin-bottom:12px">Simulate high usage to trigger auto-throttle (threshold: 8 Mbps)</p>
-      <div class="row">
-        <div class="field"><label>Session ID</label><input id="sim-id" type="number" placeholder="1"/></div>
-        <div class="field"><label>Usage Mbps</label><input id="sim-mbps" type="number" placeholder="9.5" step="0.1"/></div>
-      </div>
-      <button class="btn btn-blue" style="margin-top:10px" onclick="simUsage()">Simulate</button>
-      <div id="sim-result" style="margin-top:8px;font-size:13px"></div>
-    </div>
-  </div>
-
-  <!-- SESSION HISTORY -->
-  <div id="tab-history" class="page hidden">
-    <div class="page-head"><h2>Session History</h2><button class="btn btn-gray" onclick="loadHistory()">↻ Refresh</button></div>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>Room</th><th>Device</th><th>IP</th><th>Connected</th><th>Disconnected</th><th>Status</th></tr></thead>
-      <tbody id="history-body"></tbody>
-    </table></div>
-  </div>
-
-  <!-- VAPS -->
-  <div id="tab-vaps" class="page hidden">
-    <div class="page-head"><h2>Virtual Access Points</h2></div>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>Room</th><th>VLAN</th><th>Bandwidth Limit</th><th>Throttle At</th><th>Isolation</th><th>Devices</th><th>Throttled</th><th>Edit</th></tr></thead>
-      <tbody id="vaps-body"></tbody>
-    </table></div>
-    <div class="card" id="vap-edit-card" style="display:none"><h3>Edit VAP Settings</h3>
-      <input type="hidden" id="edit-vap-id"/>
-      <div class="row">
-        <div class="field"><label>Bandwidth Limit (Mbps)</label><input id="edit-bw" type="number" min="1" max="100"/></div>
-        <div class="field"><label>Throttle At (Mbps)</label><input id="edit-throttle" type="number" min="1" max="100"/></div>
-        <div class="field"><label>Client Isolation</label>
-          <select id="edit-isolated"><option value="1">Enabled</option><option value="0">Disabled</option></select>
-        </div>
-      </div>
-      <div style="display:flex;gap:10px;margin-top:12px">
-        <button class="btn btn-blue" onclick="saveVap()">Save</button>
-        <button class="btn btn-gray" onclick="document.getElementById('vap-edit-card').style.display='none'">Cancel</button>
-      </div>
-      <div id="vap-save-msg" style="margin-top:8px;font-size:13px"></div>
-    </div>
-    <div class="card"><h3>🔒 Test Client Isolation</h3>
-      <p style="font-size:13px;color:#64748b;margin-bottom:12px">Check if two sessions can communicate — different VAPs will be blocked</p>
-      <div class="row">
-        <div class="field"><label>Source Session ID</label><input id="iso-src" type="number" placeholder="1"/></div>
-        <div class="field"><label>Target Session ID</label><input id="iso-tgt" type="number" placeholder="2"/></div>
-      </div>
-      <button class="btn btn-blue" style="margin-top:10px" onclick="checkIso()">Check Isolation</button>
-      <div id="iso-result" style="margin-top:10px;font-size:14px"></div>
-    </div>
-    <div class="page-head" style="margin-top:20px"><h2>Isolation Events Log</h2></div>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>Time</th><th>Source Room</th><th>Target Room</th><th>Action</th><th>Reason</th></tr></thead>
-      <tbody id="iso-body"></tbody>
-    </table></div>
-  </div>
-
-  <!-- VOUCHERS -->
-  <div id="tab-vouchers" class="page hidden">
-    <div class="page-head"><h2>Vouchers</h2><button class="btn btn-blue" onclick="toggleForm('voucher-form')">+ Create Voucher</button></div>
-    <div id="voucher-form" class="card hidden"><h3>New Voucher</h3>
-      <div class="row">
-        <div class="field"><label>Room</label><select id="v-room"><option value="">— No room —</option></select></div>
-        <div class="field"><label>Duration (hrs)</label><input id="v-dur" type="number" value="24" min="1"/></div>
-        <div class="field"><label>Max Devices</label><input id="v-dev" type="number" value="2" min="1" max="10"/></div>
-        <div class="field"><label>Quantity</label><input id="v-qty" type="number" value="1" min="1" max="100"/></div>
-      </div>
-      <div class="row">
-        <div class="field"><label>Guest Phone (optional — sends SMS)</label><input id="v-phone" type="tel" placeholder="e.g. 0712345678"/></div>
-      </div>
-      <div style="display:flex;gap:10px;margin-top:12px">
-        <button class="btn btn-blue" onclick="createVoucher()">Generate</button>
-        <button class="btn btn-gray" onclick="toggleForm('voucher-form')">Cancel</button>
-      </div>
-      <div id="voucher-msg" style="margin-top:8px;font-size:13px"></div>
-    </div>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>Code</th><th>Room</th><th>Duration</th><th>Devices</th><th>Status</th><th>Expires</th><th>Actions</th></tr></thead>
-      <tbody id="vouchers-body"></tbody>
-    </table></div>
-  </div>
-
-  <!-- ROOMS -->
-  <div id="tab-rooms" class="page hidden">
-    <div class="page-head"><h2>Rooms</h2><button class="btn btn-blue" onclick="toggleForm('room-form')">+ Add Room</button></div>
-    <div id="room-form" class="card hidden"><h3>Add Room</h3>
-      <div class="row">
-        <div class="field"><label>Room Number</label><input id="r-num" type="text" placeholder="101"/></div>
-        <div class="field"><label>Floor</label><input id="r-floor" type="number" placeholder="1" min="1"/></div>
-      </div>
-      <div style="display:flex;gap:10px;margin-top:12px">
-        <button class="btn btn-blue" onclick="addRoom()">Add Room</button>
-        <button class="btn btn-gray" onclick="toggleForm('room-form')">Cancel</button>
-      </div>
-    </div>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>Room</th><th>Floor</th><th>VAP/VLAN</th><th>Status</th><th>Action</th></tr></thead>
-      <tbody id="rooms-body"></tbody>
-    </table></div>
-  </div>
-
-  <!-- NETWORK TOPOLOGY -->
-  <div id="tab-topology" class="page hidden">
-    <div class="page-head"><h2>Network Topology Map</h2><button class="btn btn-gray" onclick="loadTopology()">↻ Refresh</button></div>
-    <div class="card">
-      <p style="font-size:13px;color:#64748b;margin-bottom:16px">Visual representation of the Virtual Access Point isolation architecture</p>
-      <div id="topology-map"></div>
-    </div>
-    <div class="card" style="margin-top:0">
-      <h3>How Client Isolation Works</h3>
-      <p style="font-size:13px;color:#475569;line-height:1.7">
-        Each room is assigned a <b>Virtual Access Point (VAP)</b> with a unique <b>VLAN ID</b>.
-        Devices connected through different VAPs cannot communicate with each other —
-        they cannot see printers, file shares, or other devices from other rooms.
-        This replaces the shared WPA2 password model where all guests were on the same network segment.
-        <br><br>
-        When a guest uses excessive bandwidth (e.g. BitTorrent), the system detects usage above the
-        <b>throttle threshold</b> and flags the session. In a production deployment, this flag
-        would trigger QoS rules on the router to limit that session's bandwidth automatically.
-      </p>
-    </div>
-  </div>
-
-  <!-- SETTINGS -->
-  <div id="tab-settings" class="page hidden">
-    <div class="page-head"><h2>Settings</h2></div>
-    <div class="card" style="max-width:480px"><h3>Change Admin Password</h3>
-      <div class="field"><label>Current Password</label><input id="pw-current" type="password"/></div>
-      <div class="field"><label>New Password</label><input id="pw-new" type="password"/></div>
-      <div class="field"><label>Confirm New Password</label><input id="pw-confirm" type="password"/></div>
-      <button class="btn btn-blue" onclick="changePassword()">Update Password</button>
-      <div id="pw-msg" style="margin-top:8px;font-size:13px"></div>
-    </div>
-    <div class="card" style="max-width:480px;margin-top:0"><h3>System Info</h3>
-      <p style="font-size:13px;color:#475569;line-height:1.8">
-        <b>Server:</b> Node.js + Express + TypeScript<br>
-        <b>Database:</b> MySQL (XAMPP)<br>
-        <b>Real-time:</b> Socket.IO<br>
-        <b>Guest Portal:</b> <a id="guest-link" href="#" target="_blank" style="color:#2563eb"></a><br>
-        <b>Auto-expiry:</b> Every 60 seconds<br>
-        <b>Default throttle:</b> 8 Mbps per session
-      </p>
-    </div>
-  </div>
-</div>
-
-<script src="/socket.io/socket.io.js"></script>
-<script>
-const API = window.location.origin + '/api';
-let token = localStorage.getItem('token');
-let currentTab = 'overview';
-const eventLog = [];
-
-const socket = io(window.location.origin);
-socket.on('connect', () => addEvent('🟢 Server connected'));
-socket.on('session:new', d => { addEvent('📱 New device: '+(d.device_name||'Unknown')+' — Room '+(d.room_number||'?')); if(currentTab==='sessions') loadSessions(); loadOverviewStats(); });
-socket.on('session:disconnected', d => { addEvent('👋 Disconnected: Session #'+d.sessionId+(d.reason==='expired'?' (expired)':'')); if(currentTab==='sessions') loadSessions(); if(currentTab==='history') loadHistory(); loadOverviewStats(); });
-socket.on('session:throttled', d => { addEvent('⚡ Throttled: Session #'+d.sessionId+' ('+d.usage_mbps+' Mbps)'); if(currentTab==='sessions') loadSessions(); });
-socket.on('isolation:blocked', d => { addEvent('🔒 Blocked: Room '+d.source.room+' → Room '+d.target.room); });
-socket.on('vouchers:updated', () => { if(currentTab==='vouchers') loadVouchers(); addEvent('⏰ Voucher(s) auto-expired'); });
-
-function addEvent(msg) {
-  eventLog.unshift(new Date().toLocaleTimeString()+' — '+msg);
-  if(eventLog.length>30) eventLog.pop();
-  const el=document.getElementById('events-list');
-  if(el) el.innerHTML=eventLog.map(e=>'<li>'+e+'</li>').join('');
-}
-
-function hdrs(){ return {'Content-Type':'application/json','Authorization':'Bearer '+token}; }
-async function api(path,opts={}){
-  const r=await fetch(API+path,{headers:hdrs(),...opts});
-  if(r.status===401){logout();return null;}
-  return r;
-}
-
-document.getElementById('login-form').onsubmit=async e=>{
-  e.preventDefault();
-  const r=await fetch(API+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('u').value,password:document.getElementById('p').value})});
-  const d=await r.json();
-  if(!r.ok){const el=document.getElementById('login-err');el.textContent=d.error;el.classList.remove('hidden');return;}
-  token=d.token; localStorage.setItem('token',token); startDash();
-};
-
-function logout(){ token=null; localStorage.removeItem('token'); document.getElementById('dash').classList.add('hidden'); document.getElementById('login-wrap').classList.remove('hidden'); }
-
-function startDash(){
-  document.getElementById('login-wrap').classList.add('hidden');
-  document.getElementById('dash').classList.remove('hidden');
-  document.getElementById('guest-link').href=window.location.origin+'/guest';
-  document.getElementById('guest-link').textContent=window.location.origin+'/guest';
-  showTab('overview');
-}
-
-function showTab(name){
-  currentTab=name;
-  document.querySelectorAll('nav button:not(#logout-btn)').forEach(b=>b.classList.remove('active'));
-  document.querySelectorAll('nav button:not(#logout-btn)').forEach(b=>{if(b.textContent.toLowerCase().replace(/[^a-z]/g,'').includes(name.replace(/[^a-z]/g,''))) b.classList.add('active');});
-  ['overview','sessions','history','vaps','vouchers','rooms','topology','settings'].forEach(t=>{
-    const el=document.getElementById('tab-'+t);
-    if(el) el.classList.toggle('hidden',t!==name);
-  });
-  if(name==='overview') loadOverviewStats();
-  if(name==='sessions') loadSessions();
-  if(name==='history') loadHistory();
-  if(name==='vaps'){loadVaps();loadIsoEvents();}
-  if(name==='vouchers') loadVouchers();
-  if(name==='rooms') loadRooms();
-  if(name==='topology') loadTopology();
-}
-
-function toggleForm(id){ document.getElementById(id).classList.toggle('hidden'); }
-
-async function loadOverviewStats(){
-  const [rooms,vouchers,sessions,vaps,iso]=await Promise.all([
-    api('/rooms').then(r=>r?.json()),
-    api('/vouchers').then(r=>r?.json()),
-    api('/sessions').then(r=>r?.json()),
-    api('/vaps').then(r=>r?.json()),
-    api('/sessions/isolation-events').then(r=>r?.json()),
-  ]);
-  if(rooms) document.getElementById('s-rooms').textContent=rooms.length;
-  if(sessions){document.getElementById('s-devices').textContent=sessions.length;document.getElementById('s-throttled').textContent=sessions.filter(s=>s.is_throttled).length;}
-  if(vouchers) document.getElementById('s-vouchers').textContent=vouchers.filter(v=>v.is_active&&!v.is_used).length;
-  if(vaps) document.getElementById('s-isolated').textContent=vaps.filter(v=>v.is_isolated).length;
-  if(iso) document.getElementById('s-blocked').textContent=iso.length;
-}
-
-async function loadRooms(){
-  const [rr,vr]=await Promise.all([api('/rooms'),api('/vaps')]);
-  if(!rr)return;
-  const rooms=await rr.json(),vaps=vr?await vr.json():[];
-  const vm={};vaps.forEach(v=>vm[v.room_id]=v);
-  const b=document.getElementById('rooms-body');
-  if(!rooms.length){b.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#64748b">No rooms yet — click + Add Room</td></tr>';return;}
-  b.innerHTML=rooms.map(r=>{
-    const v=vm[r.id];
-    return `<tr><td><b>${r.room_number}</b></td><td>${r.floor}</td>
-    <td>${v?`<span class="badge gray">VAP-${v.id}/VLAN-${v.vlan_id}</span>`:'<span class="badge yellow">No VAP</span>'}</td>
-    <td><span class="badge ${r.is_active?'green':'gray'}">${r.is_active?'Active':'Inactive'}</span></td>
-    <td><button class="btn btn-red" style="padding:4px 10px;font-size:12px" onclick="delRoom(${r.id})">Remove</button></td></tr>`;
-  }).join('');
-}
-
-async function addRoom(){
-  const num=document.getElementById('r-num').value.trim();
-  const floor=parseInt(document.getElementById('r-floor').value);
-  if(!num||!floor){alert('Enter room number and floor');return;}
-  const r=await api('/rooms',{method:'POST',body:JSON.stringify({room_number:num,floor})});
-  if(!r)return;
-  if(!r.ok){const d=await r.json();alert(d.error);return;}
-  document.getElementById('r-num').value='';document.getElementById('r-floor').value='';
-  document.getElementById('room-form').classList.add('hidden');
-  loadRooms();
-}
-
-async function delRoom(id){
-  if(!confirm('Remove room?'))return;
-  await api('/rooms/'+id,{method:'DELETE'});
-  loadRooms();
-}
-
-async function loadVouchers(){
-  const [vr,rr]=await Promise.all([api('/vouchers'),api('/rooms')]);
-  if(!vr)return;
-  const vouchers=await vr.json(),rooms=rr?await rr.json():[];
-  document.getElementById('v-room').innerHTML='<option value="">— No room —</option>'+rooms.map(r=>`<option value="${r.id}">${r.room_number}</option>`).join('');
-  const b=document.getElementById('vouchers-body');
-  if(!vouchers.length){b.innerHTML='<tr><td colspan="7" style="text-align:center;padding:20px;color:#64748b">No vouchers yet — click + Create Voucher</td></tr>';return;}
-  b.innerHTML=vouchers.map(v=>{
-    const exp=v.expires_at&&new Date(v.expires_at)<new Date();
-    const cls=!v.is_active?'gray':exp?'red':v.is_used?'yellow':'green';
-    const lbl=!v.is_active?'Inactive':exp?'Expired':v.is_used?'In Use':'Available';
-    return `<tr>
-      <td><code style="background:#f1f5f9;padding:2px 8px;border-radius:4px;font-size:15px;letter-spacing:2px">${v.code}</code></td>
-      <td>${v.room_number||'—'}</td><td>${v.duration_hours}h</td>
-      <td>${v.active_devices??0}/${v.max_devices}</td>
-      <td><span class="badge ${cls}">${lbl}</span></td>
-      <td style="font-size:12px">${v.expires_at?new Date(v.expires_at).toLocaleString():'—'}</td>
-      <td style="display:flex;gap:6px;flex-wrap:wrap">
-        ${v.is_active?`<button class="btn btn-red" style="padding:4px 10px;font-size:12px" onclick="deactivate(${v.id})">Deactivate</button>`:''}
-        ${v.is_active?`<button class="btn btn-gray" style="padding:4px 10px;font-size:12px" onclick="printVoucher('${v.code}','${v.room_number||''}',${v.duration_hours},${v.max_devices})">🖨 Print</button>`:''}
-      </td></tr>`;
-  }).join('');
-}
-
-async function createVoucher(){
-  const room_id=document.getElementById('v-room').value||null;
-  const duration_hours=parseInt(document.getElementById('v-dur').value);
-  const max_devices=parseInt(document.getElementById('v-dev').value);
-  const quantity=parseInt(document.getElementById('v-qty').value);
-  const guest_phone=document.getElementById('v-phone').value.trim()||null;
-  const msg=document.getElementById('voucher-msg');
-  msg.textContent='Generating...';msg.style.color='#64748b';
-  const r=await api('/vouchers',{method:'POST',body:JSON.stringify({room_id,duration_hours,max_devices,quantity,guest_phone})});
-  if(!r)return;
-  if(!r.ok){const d=await r.json();alert(d.error);msg.textContent='';return;}
-  const d=await r.json();
-  if(guest_phone&&quantity===1){
-    msg.style.color=d.sms_sent?'#16a34a':'#d97706';
-    msg.textContent=d.sms_sent?`✅ SMS sent to ${guest_phone}`:`⚠️ Voucher created but SMS failed — give code manually`;
-  } else { msg.textContent=''; }
-  document.getElementById('v-phone').value='';
-  document.getElementById('voucher-form').classList.add('hidden');
-  loadVouchers();
-}
-
-async function deactivate(id){
-  if(!confirm('Deactivate?'))return;
-  await api('/vouchers/'+id,{method:'DELETE'});
-  loadVouchers();
-}
-
-function printVoucher(code,room,duration,devices){
-  const w=window.open('','_blank','width=420,height=520');
-  w.document.write(`<!DOCTYPE html><html><head><title>WiFi Voucher</title>
-  <style>body{font-family:Arial,sans-serif;padding:30px;text-align:center}
-  .box{border:2px dashed #333;padding:24px;border-radius:8px;max-width:320px;margin:0 auto}
-  h2{font-size:20px;margin-bottom:4px}.code{font-size:34px;font-weight:700;letter-spacing:4px;background:#f1f5f9;padding:12px;border-radius:6px;margin:16px 0;font-family:monospace}
-  .info{font-size:13px;color:#555;margin:4px 0}.url{font-size:12px;color:#2563eb;margin-top:12px;word-break:break-all}
-  .footer{font-size:11px;color:#999;margin-top:16px}@media print{button{display:none}}</style></head><body>
-  <div class="box"><h2>🏨 Hotel WiFi Access</h2>
-  <div class="info">Room: <b>${room||'—'}</b></div>
-  <div class="code">${code}</div>
-  <div class="info">⏱ Duration: <b>${duration} hours</b></div>
-  <div class="info">📱 Max devices: <b>${devices}</b></div>
-  <div class="url">Connect at:<br><b>${window.location.origin}/guest</b></div>
-  <div class="footer">Open browser → enter URL → type code to connect</div></div><br>
-  <button onclick="window.print()" style="padding:10px 24px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨 Print</button>
-  </body></html>`);
-  w.document.close();
-}
-
-async function loadSessions(){
-  const r=await api('/sessions');if(!r)return;
-  const sessions=await r.json();
-  const b=document.getElementById('sessions-body');
-  if(!sessions.length){b.innerHTML='<tr><td colspan="9" style="text-align:center;padding:20px;color:#64748b">No active sessions</td></tr>';return;}
-  b.innerHTML=sessions.map(s=>`<tr>
-    <td><b style="color:#2563eb">#${s.id}</b></td>
-    <td><b>${s.room_number||'—'}</b></td>
-    <td>${s.vap_id?`<span class="badge blue" style="font-size:11px">VAP-${s.vap_id} / VLAN-${s.vlan_id||'?'}</span>`:'<span class="badge yellow">No VAP</span>'}</td>
-    <td title="${s.device_name||''}">${s.device_name||'—'}</td>
-    <td><code style="font-size:12px;background:#f1f5f9;padding:2px 5px;border-radius:4px">${s.ip_address||'—'}</code></td>
-    <td style="font-size:12px;color:#64748b">${new Date(s.connected_at).toLocaleTimeString()}</td>
-    <td id="bw-${s.id}">${s.avg_usage_mbps>0?`<b>${s.avg_usage_mbps}</b> Mbps`:'—'}</td>
-    <td><span class="badge ${s.is_throttled?'red':'green'}">${s.is_throttled?'⚡ Throttled':'✅ Normal'}</span></td>
-    <td style="white-space:nowrap">
-      <button class="btn btn-red" style="padding:4px 8px;font-size:12px" onclick="disconnect(${s.id})">Disconnect</button>
-      <button class="btn btn-gray" style="padding:4px 8px;font-size:12px;margin-left:4px" onclick="document.getElementById('sim-id').value=${s.id};document.getElementById('sim-mbps').value=9.5">⚡ Sim</button>
-    </td>
-  </tr>`).join('');
-}
-
-async function loadHistory(){
-  const r=await api('/sessions/history');if(!r)return;
-  const sessions=await r.json();
-  const b=document.getElementById('history-body');
-  if(!sessions.length){b.innerHTML='<tr><td colspan="6" style="text-align:center;padding:20px;color:#64748b">No session history yet</td></tr>';return;}
-  b.innerHTML=sessions.map(s=>`<tr>
-    <td><b>${s.room_number||'—'}</b></td>
-    <td>${s.device_name||'—'}</td>
-    <td><code style="font-size:12px">${s.ip_address||'—'}</code></td>
-    <td style="font-size:12px">${new Date(s.connected_at).toLocaleString()}</td>
-    <td style="font-size:12px">${s.disconnected_at?new Date(s.disconnected_at).toLocaleString():'—'}</td>
-    <td><span class="badge ${s.is_active?'green':'gray'}">${s.is_active?'Active':'Ended'}</span></td>
-  </tr>`).join('');
-}
-
-async function disconnect(id){
-  if(!confirm('Disconnect?'))return;
-  await api('/sessions/'+id,{method:'DELETE'});
-  loadSessions();
-}
-
-async function simUsage(){
-  const id=document.getElementById('sim-id').value;
-  const mbps=parseFloat(document.getElementById('sim-mbps').value);
-  if(!id||!mbps){alert('Enter session ID and Mbps');return;}
-  const r=await api('/sessions/'+id+'/simulate-usage',{method:'POST',body:JSON.stringify({usage_mbps:mbps})});
-  if(!r)return;
-  const d=await r.json();
-  const el=document.getElementById('sim-result');
-  el.style.color=d.is_throttled?'#dc2626':'#16a34a';
-  el.textContent=d.is_throttled?`⚡ Session #${id} THROTTLED — ${mbps} Mbps exceeds ${d.threshold} Mbps threshold`:`✅ Session #${id} normal — ${mbps} Mbps (threshold: ${d.threshold} Mbps)`;
-  loadSessions();
-}
-
-async function loadVaps(){
-  const r=await api('/vaps');if(!r)return;
-  const vaps=await r.json();
-  document.getElementById('vaps-body').innerHTML=vaps.map(v=>`<tr>
-    <td><b>${v.room_number}</b> <span style="color:#64748b;font-size:12px">Floor ${v.floor}</span></td>
-    <td><span class="badge blue">VLAN ${v.vlan_id}</span></td>
-    <td>${v.bandwidth_limit_mbps} Mbps</td>
-    <td>${v.throttle_threshold_mbps} Mbps</td>
-    <td><span class="badge ${v.is_isolated?'green':'yellow'}">${v.is_isolated?'🔒 Isolated':'⚠️ Open'}</span></td>
-    <td>${v.active_devices}</td>
-    <td>${v.throttled_devices>0?`<span class="badge red">${v.throttled_devices}</span>`:'0'}</td>
-    <td><button class="btn btn-gray" style="padding:4px 10px;font-size:12px" onclick="editVap(${v.id},${v.bandwidth_limit_mbps},${v.throttle_threshold_mbps},${v.is_isolated})">Edit</button></td>
-  </tr>`).join('');
-}
-
-function editVap(id,bw,throttle,isolated){
-  document.getElementById('edit-vap-id').value=id;
-  document.getElementById('edit-bw').value=bw;
-  document.getElementById('edit-throttle').value=throttle;
-  document.getElementById('edit-isolated').value=isolated?'1':'0';
-  document.getElementById('vap-edit-card').style.display='block';
-  document.getElementById('vap-save-msg').textContent='';
-  document.getElementById('vap-edit-card').scrollIntoView({behavior:'smooth'});
-}
-
-async function saveVap(){
-  const id=document.getElementById('edit-vap-id').value;
-  const bandwidth_limit_mbps=parseInt(document.getElementById('edit-bw').value);
-  const throttle_threshold_mbps=parseInt(document.getElementById('edit-throttle').value);
-  const is_isolated=document.getElementById('edit-isolated').value==='1';
-  const r=await api('/vaps/'+id,{method:'PATCH',body:JSON.stringify({bandwidth_limit_mbps,throttle_threshold_mbps,is_isolated})});
-  if(!r)return;
-  const msg=document.getElementById('vap-save-msg');
-  if(r.ok){msg.style.color='#16a34a';msg.textContent='✅ VAP settings saved';}
-  else{msg.style.color='#dc2626';msg.textContent='Failed to save';}
-  loadVaps();
-}
-
-async function loadIsoEvents(){
-  const r=await api('/sessions/isolation-events');if(!r)return;
-  const evts=await r.json();
-  const b=document.getElementById('iso-body');
-  if(!evts.length){b.innerHTML='<tr><td colspan="5" style="text-align:center;padding:16px;color:#64748b">No isolation events yet — use Check Isolation to test</td></tr>';return;}
-  b.innerHTML=evts.map(e=>`<tr>
-    <td style="font-size:12px">${new Date(e.occurred_at).toLocaleString()}</td>
-    <td>Room ${e.source_room||'—'} <code style="font-size:11px">${e.source_ip||''}</code></td>
-    <td>Room ${e.target_room||'—'} <code style="font-size:11px">${e.target_ip||''}</code></td>
-    <td><span class="badge red">${e.action}</span></td>
-    <td style="font-size:12px;color:#64748b">${e.reason}</td>
-  </tr>`).join('');
-}
-
-async function checkIso(){
-  const src=parseInt(document.getElementById('iso-src').value);
-  const tgt=parseInt(document.getElementById('iso-tgt').value);
-  if(!src||!tgt){alert('Enter both session IDs');return;}
-  const r=await api('/sessions/check-isolation',{method:'POST',body:JSON.stringify({source_session_id:src,target_session_id:tgt})});
-  if(!r)return;
-  const d=await r.json();
-  const el=document.getElementById('iso-result');
-  el.style.cssText=`padding:12px;border-radius:8px;background:${d.blocked?'#fee2e2':'#f0fdf4'};border-left:4px solid ${d.blocked?'#dc2626':'#16a34a'}`;
-  el.innerHTML=`<b>${d.blocked?'🔒 BLOCKED — Client Isolation Active':'✅ ALLOWED — Same VAP'}</b><br><span style="color:#64748b;font-size:13px">${d.reason}</span>`;
-  loadIsoEvents();
-}
-
-async function loadTopology(){
-  const [rr,vr,sr]=await Promise.all([api('/rooms'),api('/vaps'),api('/sessions')]);
-  if(!rr)return;
-  const rooms=await rr.json(),vaps=vr?await vr.json():[],sessions=sr?await sr.json():[];
-  const vm={};vaps.forEach(v=>vm[v.room_id]=v);
-  const sm={};sessions.forEach(s=>{if(!sm[s.vap_id])sm[s.vap_id]=[];sm[s.vap_id].push(s);});
-  const map=document.getElementById('topology-map');
-  let html=`<div class="topo">
-    <div class="topo-box internet">🌐 Internet</div>
-    <div class="topo-arrow">↓</div>
-    <div class="topo-box router">📡 Airtel Router<div class="topo-label">192.168.1.1</div></div>
-    <div class="topo-arrow">↓</div>
-    <div class="topo-box" style="background:#f0fdf4;border-color:#16a34a;font-weight:700">🖥️ Hotel WiFi Manager Server<div class="topo-label">${window.location.host}</div></div>
-    <div class="topo-arrow">↓ VAP Assignment</div>
-    <div class="topo-row">`;
-  rooms.forEach(r=>{
-    const v=vm[r.id];
-    const devs=v?sm[v.id]||[]:[];
-    html+=`<div style="display:flex;flex-direction:column;align-items:center;gap:4px">
-      <div class="topo-box vap">Room ${r.room_number}<div class="topo-label">${v?'VLAN '+v.vlan_id:'No VAP'}</div></div>`;
-    if(devs.length){
-      devs.forEach(d=>{
-        html+=`<div class="topo-arrow" style="font-size:14px">↓</div>
-        <div class="topo-box device ${d.is_throttled?'blocked':''}">${d.device_name||'Device'}<div class="topo-label">${d.ip_address||''}</div></div>`;
-      });
-    } else {
-      html+=`<div class="topo-arrow" style="font-size:14px;color:#cbd5e1">↓</div><div class="topo-box device" style="color:#94a3b8">No devices</div>`;
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Hotel WiFi Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <style>
+    [data-loading]::before {
+      content: '';
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      position: fixed;
+      inset: 0;
+      background: #f1f5f9;
+      z-index: 9999;
     }
-    html+=`</div>`;
+  </style>
+</head>
+<body class="bg-slate-100">
+<div id="root"><div class="min-h-screen flex items-center justify-center text-slate-400 text-sm">Loading…</div></div>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+const API = location.origin + '/api';
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+function api(token, path, opts = {}) {
+  return fetch(API + path, {
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    ...opts,
   });
-  html+=`</div>
-    <div style="margin-top:16px;padding:10px;background:#fee2e2;border-radius:8px;font-size:13px;text-align:center;color:#dc2626">
-      🔒 Cross-VAP communication is <b>BLOCKED</b> — guests cannot see each other's devices
-    </div></div>`;
-  map.innerHTML=html;
 }
 
-async function changePassword(){
-  const current=document.getElementById('pw-current').value;
-  const newpw=document.getElementById('pw-new').value;
-  const confirm=document.getElementById('pw-confirm').value;
-  const msg=document.getElementById('pw-msg');
-  if(!current||!newpw){msg.style.color='#dc2626';msg.textContent='Fill in all fields';return;}
-  if(newpw!==confirm){msg.style.color='#dc2626';msg.textContent='New passwords do not match';return;}
-  if(newpw.length<6){msg.style.color='#dc2626';msg.textContent='Password must be at least 6 characters';return;}
-  const r=await api('/auth/change-password',{method:'POST',body:JSON.stringify({current_password:current,new_password:newpw})});
-  if(!r)return;
-  const d=await r.json();
-  if(r.ok){msg.style.color='#16a34a';msg.textContent='✅ Password updated successfully';document.getElementById('pw-current').value='';document.getElementById('pw-new').value='';document.getElementById('pw-confirm').value='';}
-  else{msg.style.color='#dc2626';msg.textContent=d.error||'Failed';}
+function Badge({ color = 'gray', children }) {
+  const map = {
+    green:  'bg-green-100 text-green-700',
+    red:    'bg-red-100 text-red-700',
+    yellow: 'bg-yellow-100 text-yellow-700',
+    blue:   'bg-blue-100 text-blue-700',
+    gray:   'bg-slate-100 text-slate-500',
+  };
+  return <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${map[color] || map.gray}`}>{children}</span>;
 }
 
-async function runDemo(){
-  if(!confirm('Demo mode will create sample vouchers for all rooms. Continue?'))return;
-  const rr=await api('/rooms');if(!rr)return;
-  const rooms=await rr.json();
-  let created=0;
-  for(const room of rooms.slice(0,3)){
-    const r=await api('/vouchers',{method:'POST',body:JSON.stringify({room_id:room.id,duration_hours:1,max_devices:2,quantity:1})});
-    if(r&&r.ok) created++;
+function Stat({ icon, value, label }) {
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-4 flex items-center gap-3">
+      <span className="text-3xl">{icon}</span>
+      <div><div className="text-2xl font-bold">{value ?? '—'}</div><div className="text-xs text-slate-500 mt-0.5">{label}</div></div>
+    </div>
+  );
+}
+
+function Card({ title, children, className = '' }) {
+  return (
+    <div className={`bg-white rounded-lg shadow-sm p-4 mb-4 ${className}`}>
+      {title && <h3 className="font-semibold text-sm mb-3">{title}</h3>}
+      {children}
+    </div>
+  );
+}
+
+function Tbl({ head, children }) {
+  return (
+    <div className="bg-white rounded-lg shadow-sm overflow-x-auto mb-4">
+      <table className="w-full text-sm border-collapse">
+        <thead><tr>{head.map((h, i) => (
+          <th key={i} className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50 whitespace-nowrap">{h}</th>
+        ))}</tr></thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function Tr({ children }) {
+  return <tr className="hover:bg-slate-50/70 transition-colors">{children}</tr>;
+}
+
+function Td({ children, className = '', ...rest }) {
+  return <td className={`px-3 py-2 border-t border-slate-100 align-middle ${className}`} {...rest}>{children}</td>;
+}
+
+function Btn({ onClick, color = 'blue', size = 'md', children, disabled, type = 'button', className = '' }) {
+  const colors = {
+    blue:  'bg-blue-600 hover:bg-blue-700 text-white',
+    red:   'bg-red-600 hover:bg-red-700 text-white',
+    green: 'bg-green-600 hover:bg-green-700 text-white',
+    gray:  'border border-slate-200 hover:bg-slate-50 text-slate-700',
+  };
+  const sizes = { sm: 'px-2 py-0.5 text-xs', md: 'px-3 py-1.5 text-sm', lg: 'px-4 py-2 text-sm w-full justify-center' };
+  return (
+    <button type={type} onClick={onClick} disabled={disabled}
+      className={`inline-flex items-center gap-1 rounded font-medium transition-colors disabled:opacity-50 ${colors[color]} ${sizes[size]} ${className}`}>
+      {children}
+    </button>
+  );
+}
+
+function Field({ label, children }) {
+  return <div className="flex flex-col gap-1">{label && <label className="text-xs font-medium text-slate-600">{label}</label>}{children}</div>;
+}
+
+function Input({ ...props }) {
+  return <input className="border border-slate-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500 w-full" {...props}/>;
+}
+
+function Select({ children, ...props }) {
+  return <select className="border border-slate-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500 w-full" {...props}>{children}</select>;
+}
+
+function PageHeader({ title, live, children }) {
+  return (
+    <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <h2 className="text-lg font-bold">{title} {live && <span className="text-xs text-green-600 font-normal ml-1">● LIVE</span>}</h2>
+      <div className="flex gap-2">{children}</div>
+    </div>
+  );
+}
+
+// ── CSV Export helper ─────────────────────────────────────────────────────────
+
+function downloadCSV(csv, filename) {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Login ─────────────────────────────────────────────────────────────────────
+
+function LoginScreen({ onLogin }) {
+  const [user, setUser] = useState('admin');
+  const [pass, setPass] = useState('');
+  const [err,  setErr]  = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault(); setErr(''); setBusy(true);
+    try {
+      const r = await fetch(API + '/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user, password: pass }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setErr(d.error || 'Login failed'); return; }
+      onLogin(d.token);
+    } catch { setErr('Cannot reach server'); }
+    finally { setBusy(false); }
   }
-  addEvent(`🚀 Demo mode: created ${created} vouchers`);
-  showTab('vouchers');
+
+  return (
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-lg p-10 w-full max-w-sm">
+        <h1 className="text-2xl font-bold mb-1">🏨 Hotel WiFi Manager</h1>
+        <p className="text-slate-500 text-sm mb-6">Admin Portal</p>
+        <form onSubmit={submit} className="space-y-3">
+          <Field label="Username"><Input value={user} onChange={e => setUser(e.target.value)} required /></Field>
+          <Field label="Password"><Input type="password" value={pass} onChange={e => setPass(e.target.value)} required /></Field>
+          {err && <p className="text-red-600 text-sm">{err}</p>}
+          <Btn type="submit" disabled={busy} color="blue" size="lg">{busy ? 'Signing in…' : 'Sign In'}</Btn>
+        </form>
+      </div>
+    </div>
+  );
 }
 
-if(token){startDash();}
+// ── Overview Tab ──────────────────────────────────────────────────────────────
+
+function OverviewTab({ token, events, reloadSignal }) {
+  const [stats, setStats] = useState({});
+
+  const load = useCallback(async () => {
+    const [rooms, vouchers, sessions, vaps, iso] = await Promise.all([
+      api(token, '/rooms').then(r => r.json()),
+      api(token, '/vouchers').then(r => r.json()),
+      api(token, '/sessions').then(r => r.json()),
+      api(token, '/vaps').then(r => r.json()),
+      api(token, '/sessions/isolation-events').then(r => r.json()),
+    ]);
+    setStats({
+      rooms:    rooms.length,
+      devices:  sessions.length,
+      throttled:sessions.filter(s => s.is_throttled).length,
+      vouchers: vouchers.filter(v => v.is_active && !v.is_used).length,
+      isolated: vaps.filter(v => v.is_isolated).length,
+      blocked:  iso.length,
+    });
+  }, [token]);
+
+  useEffect(() => { load(); }, [load, reloadSignal]);
+
+  async function runDemo() {
+    if (!confirm('Create demo vouchers for the first 3 rooms?')) return;
+    const rooms = await api(token, '/rooms').then(r => r.json());
+    let n = 0;
+    for (const room of rooms.slice(0, 3)) {
+      const r = await api(token, '/vouchers', { method: 'POST', body: JSON.stringify({ room_id: room.id, duration_hours: 1, max_devices: 2 }) });
+      if (r.ok) n++;
+    }
+    alert(`Demo: created ${n} voucher(s). Go to the Vouchers tab.`);
+    load();
+  }
+
+  return (
+    <div>
+      <PageHeader title="Overview" live>
+        <Btn onClick={runDemo} color="green">🚀 Demo Mode</Btn>
+      </PageHeader>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+        <Stat icon="🏠" value={stats.rooms}     label="Rooms" />
+        <Stat icon="📱" value={stats.devices}   label="Connected" />
+        <Stat icon="🎫" value={stats.vouchers}  label="Avail. Vouchers" />
+        <Stat icon="⚡" value={stats.throttled} label="Throttled" />
+        <Stat icon="🔒" value={stats.isolated}  label="Isolated VAPs" />
+        <Stat icon="🚫" value={stats.blocked}   label="ISO Events" />
+      </div>
+      <Card title="Recent Events">
+        {events.length === 0
+          ? <p className="text-slate-400 text-sm">No events yet — connect a device or run Demo Mode.</p>
+          : <ul className="divide-y divide-slate-100 text-sm max-h-56 overflow-y-auto">
+              {events.map((e, i) => (
+                <li key={i} className="py-1.5 flex gap-2">
+                  <span className="text-slate-400 text-xs whitespace-nowrap">{e.time}</span>
+                  <span>{e.icon} {e.msg}</span>
+                </li>
+              ))}
+            </ul>
+        }
+      </Card>
+    </div>
+  );
+}
+
+// ── Live Sessions Tab ─────────────────────────────────────────────────────────
+
+function SessionsTab({ token }) {
+  const [sessions, setSessions] = useState([]);
+  const [simId,   setSimId]   = useState('');
+  const [simMbps, setSimMbps] = useState('');
+  const [simMsg,  setSimMsg]  = useState(null);
+
+  const load = useCallback(async () => {
+    const r = await api(token, '/sessions');
+    if (r.ok) setSessions(await r.json());
+  }, [token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function disconnect(id) {
+    if (!confirm('Disconnect this device?')) return;
+    await fetch(location.origin + '/api/sessions/' + id, { method: 'DELETE' });
+    load();
+  }
+
+  async function simulate() {
+    if (!simId || !simMbps) return;
+    const r = await api(token, `/sessions/${simId}/simulate-usage`, {
+      method: 'POST', body: JSON.stringify({ usage_mbps: parseFloat(simMbps) }),
+    });
+    const d = await r.json();
+    setSimMsg(d);
+    load();
+  }
+
+  return (
+    <div>
+      <PageHeader title="Live Sessions">
+        <Btn onClick={load} color="gray">↻ Refresh</Btn>
+      </PageHeader>
+      <Tbl head={['#ID','Room','VAP/VLAN','Device','MAC','IP','Connected','Bandwidth','Status','Action']}>
+        {sessions.length === 0
+          ? <Tr><Td className="text-center py-10 text-slate-400" colSpan={10}>No active sessions</Td></Tr>
+          : sessions.map(s => (
+            <Tr key={s.id}>
+              <Td><b className="text-blue-600">#{s.id}</b></Td>
+              <Td><b>{s.room_number || '—'}</b></Td>
+              <Td>{s.vap_id ? <Badge color="blue">VAP-{s.vap_id} / VLAN-{s.vlan_id || '?'}</Badge> : <Badge color="yellow">No VAP</Badge>}</Td>
+              <Td className="max-w-[140px] truncate" title={s.device_name}>{s.device_name || '—'}</Td>
+              <Td><code className="text-xs bg-slate-100 px-1 rounded">{s.device_mac || '—'}</code></Td>
+              <Td><code className="text-xs bg-slate-100 px-1 rounded">{s.ip_address || '—'}</code></Td>
+              <Td className="text-xs text-slate-400 whitespace-nowrap">{new Date(s.connected_at).toLocaleTimeString()}</Td>
+              <Td id={`bw-${s.id}`}>{Number(s.avg_usage_mbps) > 0 ? <b>{Number(s.avg_usage_mbps).toFixed(2)} Mbps</b> : '—'}</Td>
+              <Td><Badge color={s.is_throttled ? 'red' : 'green'}>{s.is_throttled ? '⚡ Throttled' : '✅ Normal'}</Badge></Td>
+              <Td className="whitespace-nowrap">
+                <Btn size="sm" color="red" onClick={() => disconnect(s.id)}>Disconnect</Btn>
+                <Btn size="sm" color="gray" className="ml-1" onClick={() => { setSimId(String(s.id)); setSimMbps('9.5'); }}>⚡ Sim</Btn>
+              </Td>
+            </Tr>
+          ))
+        }
+      </Tbl>
+
+      <Card title="🎮 Simulate Bandwidth (Demo)">
+        <p className="text-xs text-slate-500 mb-3">Manually push usage to trigger auto-throttle (default threshold: 8 Mbps)</p>
+        <div className="flex flex-wrap gap-3 items-end">
+          <Field label="Session ID"><Input type="number" className="w-28" value={simId} onChange={e => setSimId(e.target.value)} placeholder="1"/></Field>
+          <Field label="Usage (Mbps)"><Input type="number" step="0.1" className="w-28" value={simMbps} onChange={e => setSimMbps(e.target.value)} placeholder="9.5"/></Field>
+          <Btn color="blue" onClick={simulate}>Simulate</Btn>
+        </div>
+        {simMsg && (
+          <p className={`mt-3 text-sm font-medium ${simMsg.is_throttled ? 'text-red-600' : 'text-green-600'}`}>
+            {simMsg.is_throttled
+              ? `⚡ Session #${simId} THROTTLED — ${simMbps} Mbps exceeds ${simMsg.threshold} Mbps threshold`
+              : `✅ Session #${simId} normal — ${simMbps} Mbps (threshold: ${simMsg.threshold} Mbps)`}
+          </p>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ── History Tab ───────────────────────────────────────────────────────────────
+
+function HistoryTab({ token }) {
+  const [rows, setRows] = useState([]);
+  const load = useCallback(async () => {
+    const r = await api(token, '/sessions/history');
+    if (r.ok) setRows(await r.json());
+  }, [token]);
+  useEffect(() => { load(); }, [load]);
+
+  function exportCSV() {
+    const headers = ['Room','Device','MAC Address','IP','Connected','Disconnected','Status'];
+    const lines = rows.map(s => [
+      s.room_number || '', s.device_name || '', s.device_mac || '', s.ip_address || '',
+      new Date(s.connected_at).toLocaleString(),
+      s.disconnected_at ? new Date(s.disconnected_at).toLocaleString() : '',
+      s.is_active ? 'Active' : 'Ended',
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+    downloadCSV([headers.join(','), ...lines].join('\n'), 'session_history.csv');
+  }
+
+  return (
+    <div>
+      <PageHeader title="Session History">
+        <Btn onClick={exportCSV} color="gray" disabled={rows.length === 0}>⬇ Export CSV</Btn>
+        <Btn onClick={load} color="gray">↻ Refresh</Btn>
+      </PageHeader>
+      <Tbl head={['Room','Device','MAC Address','IP','Connected','Disconnected','Status']}>
+        {rows.length === 0
+          ? <Tr><Td className="text-center py-10 text-slate-400" colSpan={7}>No history yet</Td></Tr>
+          : rows.map(s => (
+            <Tr key={s.id}>
+              <Td><b>{s.room_number || '—'}</b></Td>
+              <Td>{s.device_name || '—'}</Td>
+              <Td><code className="text-xs">{s.device_mac || '—'}</code></Td>
+              <Td><code className="text-xs">{s.ip_address || '—'}</code></Td>
+              <Td className="text-xs text-slate-400">{new Date(s.connected_at).toLocaleString()}</Td>
+              <Td className="text-xs text-slate-400">{s.disconnected_at ? new Date(s.disconnected_at).toLocaleString() : '—'}</Td>
+              <Td><Badge color={s.is_active ? 'green' : 'gray'}>{s.is_active ? 'Active' : 'Ended'}</Badge></Td>
+            </Tr>
+          ))
+        }
+      </Tbl>
+    </div>
+  );
+}
+
+// ── VAPs / Isolation Tab ──────────────────────────────────────────────────────
+
+function VAPsTab({ token }) {
+  const [vaps,     setVaps]     = useState([]);
+  const [isoEvts,  setIsoEvts]  = useState([]);
+  const [editing,  setEditing]  = useState(null);
+  const [isoSrc,   setIsoSrc]   = useState('');
+  const [isoTgt,   setIsoTgt]   = useState('');
+  const [isoResult,setIsoResult]= useState(null);
+  const [saveMsg,  setSaveMsg]  = useState('');
+
+  const load = useCallback(async () => {
+    const [vr, ir] = await Promise.all([api(token, '/vaps'), api(token, '/sessions/isolation-events')]);
+    if (vr.ok) setVaps(await vr.json());
+    if (ir.ok) setIsoEvts(await ir.json());
+  }, [token]);
+  useEffect(() => { load(); }, [load]);
+
+  async function saveVap() {
+    const r = await api(token, `/vaps/${editing.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        bandwidth_limit_mbps:    parseInt(editing.bandwidth_limit_mbps),
+        throttle_threshold_mbps: parseInt(editing.throttle_threshold_mbps),
+        is_isolated:             editing.is_isolated,
+      }),
+    });
+    if (r.ok) { setSaveMsg('✅ Saved'); setTimeout(() => { setEditing(null); setSaveMsg(''); }, 800); load(); }
+    else      { setSaveMsg('❌ Failed'); }
+  }
+
+  async function checkIso() {
+    if (!isoSrc || !isoTgt) { alert('Enter both session IDs'); return; }
+    const r = await api(token, '/sessions/check-isolation', {
+      method: 'POST',
+      body: JSON.stringify({ source_session_id: parseInt(isoSrc), target_session_id: parseInt(isoTgt) }),
+    });
+    setIsoResult(await r.json());
+    load();
+  }
+
+  return (
+    <div>
+      <PageHeader title="Virtual Access Points" />
+      <Tbl head={['Room','VLAN','BW Limit','Throttle At','Isolation','Devices','Throttled','Edit']}>
+        {vaps.map(v => (
+          <Tr key={v.id}>
+            <Td><b>{v.room_number}</b> <span className="text-xs text-slate-400">Floor {v.floor}</span></Td>
+            <Td><Badge color="blue">VLAN {v.vlan_id}</Badge></Td>
+            <Td>{v.bandwidth_limit_mbps} Mbps</Td>
+            <Td>{v.throttle_threshold_mbps} Mbps</Td>
+            <Td><Badge color={v.is_isolated ? 'green' : 'yellow'}>{v.is_isolated ? '🔒 Isolated' : '⚠️ Open'}</Badge></Td>
+            <Td>{v.active_devices}</Td>
+            <Td>{v.throttled_devices > 0 ? <Badge color="red">{v.throttled_devices}</Badge> : '0'}</Td>
+            <Td><Btn size="sm" color="gray" onClick={() => { setEditing({...v}); setSaveMsg(''); }}>Edit</Btn></Td>
+          </Tr>
+        ))}
+      </Tbl>
+
+      {editing && (
+        <Card title={`Edit VAP — Room ${editing.room_number} (VLAN ${editing.vlan_id})`}>
+          <div className="flex flex-wrap gap-4 mb-3">
+            <Field label="Bandwidth Limit (Mbps)">
+              <Input type="number" className="w-32" value={editing.bandwidth_limit_mbps}
+                onChange={e => setEditing(p => ({...p, bandwidth_limit_mbps: e.target.value}))} />
+            </Field>
+            <Field label="Throttle At (Mbps)">
+              <Input type="number" className="w-32" value={editing.throttle_threshold_mbps}
+                onChange={e => setEditing(p => ({...p, throttle_threshold_mbps: e.target.value}))} />
+            </Field>
+            <Field label="Client Isolation">
+              <Select className="w-36" value={editing.is_isolated ? '1' : '0'}
+                onChange={e => setEditing(p => ({...p, is_isolated: e.target.value === '1'}))}>
+                <option value="1">Enabled</option>
+                <option value="0">Disabled</option>
+              </Select>
+            </Field>
+          </div>
+          <div className="flex gap-2 items-center">
+            <Btn color="blue" onClick={saveVap}>Save</Btn>
+            <Btn color="gray" onClick={() => setEditing(null)}>Cancel</Btn>
+            {saveMsg && <span className="text-sm">{saveMsg}</span>}
+          </div>
+        </Card>
+      )}
+
+      <Card title="🔒 Test Client Isolation">
+        <p className="text-xs text-slate-500 mb-3">Check if two sessions can communicate — sessions on different VAPs are blocked when isolation is on.</p>
+        <div className="flex flex-wrap gap-3 items-end mb-3">
+          <Field label="Source Session ID"><Input type="number" className="w-32" value={isoSrc} onChange={e => setIsoSrc(e.target.value)} placeholder="1"/></Field>
+          <Field label="Target Session ID"><Input type="number" className="w-32" value={isoTgt} onChange={e => setIsoTgt(e.target.value)} placeholder="2"/></Field>
+          <Btn color="blue" onClick={checkIso}>Check Isolation</Btn>
+        </div>
+        {isoResult && (
+          <div className={`p-3 rounded-lg border-l-4 text-sm ${isoResult.blocked ? 'bg-red-50 border-red-500' : 'bg-green-50 border-green-500'}`}>
+            <b>{isoResult.blocked ? '🔒 BLOCKED — Client Isolation Active' : '✅ ALLOWED — Same VAP'}</b>
+            <p className="text-slate-500 mt-0.5">{isoResult.reason}</p>
+          </div>
+        )}
+      </Card>
+
+      <PageHeader title="Isolation Events Log">
+        <Btn onClick={load} color="gray">↻ Refresh</Btn>
+      </PageHeader>
+      <Tbl head={['Time','Source Room','Target Room','Action','Reason']}>
+        {isoEvts.length === 0
+          ? <Tr><Td className="text-center py-8 text-slate-400" colSpan={5}>No events yet — use Check Isolation above to generate one.</Td></Tr>
+          : isoEvts.map(e => (
+            <Tr key={e.id}>
+              <Td className="text-xs text-slate-400 whitespace-nowrap">{new Date(e.occurred_at).toLocaleString()}</Td>
+              <Td>Room {e.source_room || '—'} <code className="text-xs text-slate-400 ml-1">{e.source_ip || ''}</code></Td>
+              <Td>Room {e.target_room || '—'} <code className="text-xs text-slate-400 ml-1">{e.target_ip || ''}</code></Td>
+              <Td><Badge color="red">{e.action}</Badge></Td>
+              <Td className="text-xs text-slate-400">{e.reason}</Td>
+            </Tr>
+          ))
+        }
+      </Tbl>
+    </div>
+  );
+}
+
+// ── Vouchers Tab ──────────────────────────────────────────────────────────────
+
+function VouchersTab({ token }) {
+  const [vouchers,  setVouchers]  = useState([]);
+  const [rooms,     setRooms]     = useState([]);
+  const [showForm,  setShowForm]  = useState(false);
+  const [form,      setForm]      = useState({ room_id: '', duration_hours: 24, max_devices: 2, quantity: 1, guest_phone: '' });
+  const [creating,  setCreating]  = useState(false);
+  const [createMsg, setCreateMsg] = useState(null);
+
+  const load = useCallback(async () => {
+    const [vr, rr] = await Promise.all([api(token, '/vouchers'), api(token, '/rooms')]);
+    if (vr.ok) setVouchers(await vr.json());
+    if (rr.ok) setRooms(await rr.json());
+  }, [token]);
+  useEffect(() => { load(); }, [load]);
+
+  function f(k) { return e => setForm(p => ({...p, [k]: e.target.value})); }
+
+  async function create(e) {
+    e.preventDefault(); setCreating(true); setCreateMsg(null);
+    const r = await api(token, '/vouchers', {
+      method: 'POST',
+      body: JSON.stringify({
+        room_id: form.room_id || null,
+        duration_hours: parseInt(form.duration_hours),
+        max_devices:    parseInt(form.max_devices),
+        quantity:       parseInt(form.quantity),
+        guest_phone:    form.guest_phone || null,
+      }),
+    });
+    setCreating(false);
+    if (!r.ok) { const d = await r.json(); alert(d.error); return; }
+    const d = await r.json();
+    if (form.guest_phone && parseInt(form.quantity) === 1) {
+      setCreateMsg(d.sms_sent ? `✅ SMS sent to ${form.guest_phone}` : '⚠️ Voucher created but SMS failed — give code manually');
+    }
+    setShowForm(false);
+    setForm({ room_id: '', duration_hours: 24, max_devices: 2, quantity: 1, guest_phone: '' });
+    load();
+  }
+
+  async function deactivate(id) {
+    if (!confirm('Deactivate this voucher?')) return;
+    await api(token, '/vouchers/' + id, { method: 'DELETE' });
+    load();
+  }
+
+  function printVoucher(code, room, ssid, dur, dev) {
+    const guestUrl = `${location.origin}/guest?code=${encodeURIComponent(code)}`;
+    const w = window.open('', '_blank', 'width=440,height=660');
+    w.document.write(`<!DOCTYPE html><html><head><title>WiFi Voucher</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>
+    <style>body{font-family:Arial,sans-serif;padding:30px;text-align:center}
+    .box{border:2px dashed #333;padding:24px;border-radius:8px;max-width:340px;margin:0 auto}
+    h2{font-size:20px;margin-bottom:4px}
+    .code{font-size:34px;font-weight:700;letter-spacing:4px;background:#f1f5f9;padding:12px;border-radius:6px;margin:16px 0;font-family:monospace}
+    .info{font-size:13px;color:#555;margin:5px 0}
+    .url{font-size:12px;color:#2563eb;margin-top:12px;word-break:break-all}
+    #qr{display:flex;justify-content:center;margin:12px 0}
+    @media print{button{display:none}}</style></head><body>
+    <div class="box">
+    <h2>🏨 Hotel WiFi Access</h2>
+    <div class="info">Room: <b>${room || '—'}</b></div>
+    ${ssid ? `<div class="info">SSID: <b>${ssid}</b></div>` : ''}
+    <div class="code">${code}</div>
+    <div id="qr"></div>
+    <div class="info">⏱ Duration: <b>${dur}h</b></div>
+    <div class="info">📱 Max devices: <b>${dev}</b></div>
+    <div class="url">Scan QR code or visit:<br><b>${location.origin}/guest</b></div>
+    </div><br>
+    <button onclick="window.print()" style="padding:10px 24px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨 Print</button>
+    <script>window.onload=function(){new QRCode(document.getElementById('qr'),{text:'${guestUrl}',width:128,height:128,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});}<\/script>
+    </body></html>`);
+    w.document.close();
+  }
+
+  function exportCSV() {
+    const headers = ['Code','Room','SSID','Duration (hrs)','Max Devices','Status','Expires'];
+    const lines = vouchers.map(v => {
+      const exp = v.expires_at && new Date(v.expires_at) < new Date();
+      const label = !v.is_active ? 'Inactive' : exp ? 'Expired' : v.is_used ? 'In Use' : 'Available';
+      return [v.code, v.room_number||'', v.ssid||'', v.duration_hours, v.max_devices, label,
+        v.expires_at ? new Date(v.expires_at).toLocaleString() : '',
+      ].map(val => `"${String(val).replace(/"/g,'""')}"`).join(',');
+    });
+    downloadCSV([headers.join(','), ...lines].join('\n'), 'vouchers.csv');
+  }
+
+  return (
+    <div>
+      <PageHeader title="Vouchers">
+        <Btn color="gray" onClick={exportCSV} disabled={vouchers.length === 0}>⬇ Export CSV</Btn>
+        <Btn color="blue" onClick={() => setShowForm(v => !v)}>+ Create Voucher</Btn>
+      </PageHeader>
+
+      {createMsg && <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 mb-4">{createMsg}</div>}
+
+      {showForm && (
+        <Card title="New Voucher">
+          <form onSubmit={create}>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+              <Field label="Room">
+                <Select value={form.room_id} onChange={f('room_id')}>
+                  <option value="">— No room —</option>
+                  {rooms.map(r => <option key={r.id} value={r.id}>{r.room_number}</option>)}
+                </Select>
+              </Field>
+              <Field label="Duration (hrs)"><Input type="number" min="1" value={form.duration_hours} onChange={f('duration_hours')} /></Field>
+              <Field label="Max Devices"><Input type="number" min="1" max="10" value={form.max_devices} onChange={f('max_devices')} /></Field>
+              <Field label="Quantity"><Input type="number" min="1" max="100" value={form.quantity} onChange={f('quantity')} /></Field>
+            </div>
+            <div className="mb-3 max-w-xs">
+              <Field label="Guest Phone (optional — sends SMS)"><Input type="tel" placeholder="e.g. 0712345678" value={form.guest_phone} onChange={f('guest_phone')} /></Field>
+            </div>
+            <div className="flex gap-2">
+              <Btn type="submit" color="blue" disabled={creating}>{creating ? 'Generating…' : 'Generate'}</Btn>
+              <Btn color="gray" onClick={() => setShowForm(false)}>Cancel</Btn>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      <Tbl head={['Code','Room','SSID','Duration','Devices','Status','Expires','Actions']}>
+        {vouchers.length === 0
+          ? <Tr><Td className="text-center py-10 text-slate-400" colSpan={8}>No vouchers yet — click + Create Voucher</Td></Tr>
+          : vouchers.map(v => {
+            const exp   = v.expires_at && new Date(v.expires_at) < new Date();
+            const color = !v.is_active ? 'gray' : exp ? 'red' : v.is_used ? 'yellow' : 'green';
+            const label = !v.is_active ? 'Inactive' : exp ? 'Expired' : v.is_used ? 'In Use' : 'Available';
+            return (
+              <Tr key={v.id}>
+                <Td><code className="bg-slate-100 px-2 py-0.5 rounded text-sm tracking-widest font-mono">{v.code}</code></Td>
+                <Td>{v.room_number || '—'}</Td>
+                <Td><code className="text-xs text-blue-600">{v.ssid || '—'}</code></Td>
+                <Td>{v.duration_hours}h</Td>
+                <Td>{v.active_devices ?? 0} / {v.max_devices}</Td>
+                <Td><Badge color={color}>{label}</Badge></Td>
+                <Td className="text-xs text-slate-400">{v.expires_at ? new Date(v.expires_at).toLocaleString() : '—'}</Td>
+                <Td className="flex gap-1 flex-wrap">
+                  {v.is_active && <Btn size="sm" color="red" onClick={() => deactivate(v.id)}>Deactivate</Btn>}
+                  {v.is_active && <Btn size="sm" color="gray" onClick={() => printVoucher(v.code, v.room_number, v.ssid, v.duration_hours, v.max_devices)}>🖨 Print</Btn>}
+                </Td>
+              </Tr>
+            );
+          })
+        }
+      </Tbl>
+    </div>
+  );
+}
+
+// ── Rooms Tab ─────────────────────────────────────────────────────────────────
+
+function RoomsTab({ token }) {
+  const [rooms,    setRooms]    = useState([]);
+  const [vaps,     setVaps]     = useState([]);
+  const [showForm, setShowForm] = useState(false);
+  const [num,      setNum]      = useState('');
+  const [floor,    setFloor]    = useState('');
+
+  const load = useCallback(async () => {
+    const [rr, vr] = await Promise.all([api(token, '/rooms'), api(token, '/vaps')]);
+    if (rr.ok) setRooms(await rr.json());
+    if (vr.ok) setVaps(await vr.json());
+  }, [token]);
+  useEffect(() => { load(); }, [load]);
+
+  const vapMap = Object.fromEntries(vaps.map(v => [v.room_id, v]));
+
+  async function addRoom(e) {
+    e.preventDefault();
+    const r = await api(token, '/rooms', {
+      method: 'POST', body: JSON.stringify({ room_number: num, floor: parseInt(floor) }),
+    });
+    if (!r.ok) { const d = await r.json(); alert(d.error); return; }
+    setNum(''); setFloor(''); setShowForm(false); load();
+  }
+
+  async function delRoom(id) {
+    if (!confirm('Remove this room and all its data?')) return;
+    await api(token, '/rooms/' + id, { method: 'DELETE' });
+    load();
+  }
+
+  return (
+    <div>
+      <PageHeader title="Rooms">
+        <Btn color="blue" onClick={() => setShowForm(v => !v)}>+ Add Room</Btn>
+      </PageHeader>
+
+      {showForm && (
+        <Card title="Add Room">
+          <form onSubmit={addRoom}>
+            <div className="flex gap-3 flex-wrap mb-3">
+              <Field label="Room Number"><Input className="w-28" placeholder="101" value={num} onChange={e => setNum(e.target.value)} required /></Field>
+              <Field label="Floor"><Input type="number" min="1" className="w-24" placeholder="1" value={floor} onChange={e => setFloor(e.target.value)} required /></Field>
+            </div>
+            <p className="text-xs text-slate-400 mb-3">SSID and WiFi password will be auto-generated.</p>
+            <div className="flex gap-2">
+              <Btn type="submit" color="blue">Add Room</Btn>
+              <Btn color="gray" onClick={() => setShowForm(false)}>Cancel</Btn>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      <Tbl head={['Room','Floor','SSID','WiFi Password','VAP / VLAN','Status','Action']}>
+        {rooms.length === 0
+          ? <Tr><Td className="text-center py-10 text-slate-400" colSpan={7}>No rooms — click + Add Room</Td></Tr>
+          : rooms.map(r => {
+            const vap = vapMap[r.id];
+            return (
+              <Tr key={r.id}>
+                <Td><b>{r.room_number}</b></Td>
+                <Td>{r.floor}</Td>
+                <Td><code className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">{r.ssid || `Hotel_Room_${r.room_number}`}</code></Td>
+                <Td><code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded font-mono tracking-wider">{r.wifi_password || '—'}</code></Td>
+                <Td>{vap ? <Badge color="blue">VAP-{vap.id} / VLAN-{vap.vlan_id}</Badge> : <Badge color="yellow">No VAP</Badge>}</Td>
+                <Td><Badge color={r.is_active ? 'green' : 'gray'}>{r.is_active ? 'Active' : 'Inactive'}</Badge></Td>
+                <Td><Btn size="sm" color="red" onClick={() => delRoom(r.id)}>Remove</Btn></Td>
+              </Tr>
+            );
+          })
+        }
+      </Tbl>
+    </div>
+  );
+}
+
+// ── Network Topology Tab ──────────────────────────────────────────────────────
+
+function TopologyTab({ token }) {
+  const [rooms,    setRooms]    = useState([]);
+  const [vaps,     setVaps]     = useState([]);
+  const [sessions, setSessions] = useState([]);
+
+  const load = useCallback(async () => {
+    const [rr, vr, sr] = await Promise.all([api(token, '/rooms'), api(token, '/vaps'), api(token, '/sessions')]);
+    if (rr.ok) setRooms(await rr.json());
+    if (vr.ok) setVaps(await vr.json());
+    if (sr.ok) setSessions(await sr.json());
+  }, [token]);
+  useEffect(() => { load(); }, [load]);
+
+  const vapMap  = Object.fromEntries(vaps.map(v => [v.room_id, v]));
+  const sessMap = {};
+  sessions.forEach(s => { if (s.vap_id) { (sessMap[s.vap_id] = sessMap[s.vap_id] || []).push(s); } });
+
+  return (
+    <div>
+      <PageHeader title="Network Topology Map">
+        <Btn color="gray" onClick={load}>↻ Refresh</Btn>
+      </PageHeader>
+      <Card>
+        <p className="text-xs text-slate-500 mb-4">Live view of VAP isolation — each room has its own VLAN segment.</p>
+        <div className="flex flex-col items-center gap-0 py-2">
+          <div className="bg-blue-100 border-2 border-blue-500 rounded-lg px-5 py-2 font-bold text-sm">🌐 Internet</div>
+          <div className="text-slate-400 text-xl leading-none my-1">↓</div>
+          <div className="bg-yellow-100 border-2 border-yellow-500 rounded-lg px-5 py-2 font-bold text-sm">📡 Router / Gateway</div>
+          <div className="text-slate-400 text-xl leading-none my-1">↓</div>
+          <div className="bg-green-100 border-2 border-green-500 rounded-lg px-5 py-2 font-bold text-sm">🖥️ Hotel WiFi Manager <span className="font-normal text-xs text-slate-500">({location.host})</span></div>
+          <div className="text-slate-400 text-xs my-2">↓ VAP Assignment per Room</div>
+          <div className="flex flex-wrap gap-4 justify-center">
+            {rooms.map(r => {
+              const v    = vapMap[r.id];
+              const devs = v ? (sessMap[v.id] || []) : [];
+              return (
+                <div key={r.id} className="flex flex-col items-center gap-1.5 min-w-[100px]">
+                  <div className="bg-green-50 border-2 border-green-400 rounded-lg px-3 py-2 text-center text-xs w-full">
+                    <div className="font-semibold">Room {r.room_number}</div>
+                    {v && <div className="text-slate-400">VLAN {v.vlan_id}</div>}
+                    {r.ssid && <div className="text-blue-600 text-xs truncate max-w-[90px]">{r.ssid}</div>}
+                  </div>
+                  {devs.length > 0
+                    ? devs.map(d => (
+                      <React.Fragment key={d.id}>
+                        <div className="text-slate-400 text-sm leading-none">↓</div>
+                        <div className={`border-2 rounded-lg px-2 py-1 text-xs text-center w-full ${d.is_throttled ? 'bg-red-50 border-red-400' : 'bg-slate-50 border-slate-300'}`}>
+                          <div className="font-medium truncate">{d.device_name || 'Device'}</div>
+                          {d.device_mac && <div className="text-slate-300 font-mono text-xs">{d.device_mac}</div>}
+                          {d.ip_address && <div className="text-slate-400 text-xs">{d.ip_address}</div>}
+                          {d.is_throttled && <div className="text-red-500 text-xs">⚡ Throttled</div>}
+                        </div>
+                      </React.Fragment>
+                    ))
+                    : <>
+                        <div className="text-slate-300 text-sm leading-none">↓</div>
+                        <div className="border-2 border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-300 text-center w-full">No devices</div>
+                      </>
+                  }
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="mt-4 p-3 bg-red-50 rounded-lg text-sm text-red-600 text-center">
+          🔒 Cross-VAP communication is <b>BLOCKED</b> — guests in different rooms cannot see each other's devices
+        </div>
+      </Card>
+      <Card title="How Client Isolation Works">
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Each room is assigned a <b>Virtual Access Point (VAP)</b> with a unique <b>VLAN ID</b> and <b>SSID</b> (e.g. <code className="bg-slate-100 px-1 rounded">Hotel_Room_101</code>).
+          Devices on different VAPs are isolated — they cannot see printers, shared drives, or other guests' devices.
+          When a session exceeds the <b>throttle threshold</b>, its <code>is_throttled</code> flag is set and QoS rules would reduce
+          that session's bandwidth on the physical router. The system auto-logs usage every 60 seconds.
+        </p>
+      </Card>
+    </div>
+  );
+}
+
+// ── Analytics Tab ─────────────────────────────────────────────────────────────
+
+function AnalyticsTab({ token }) {
+  const [summary,    setSummary]    = useState(null);
+  const [sessions,   setSessions]   = useState([]);
+  const [selSession, setSelSession] = useState('');
+  const [bwHistory,  setBwHistory]  = useState([]);
+  const barRef  = useRef(null);
+  const lineRef = useRef(null);
+  const barChart  = useRef(null);
+  const lineChart = useRef(null);
+
+  const load = useCallback(async () => {
+    const [sr, sesr] = await Promise.all([
+      api(token, '/analytics/summary').then(r => r.json()),
+      api(token, '/sessions/history').then(r => r.json()),
+    ]);
+    setSummary(sr);
+    setSessions(sesr);
+  }, [token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Destroy charts on unmount
+  useEffect(() => {
+    return () => {
+      if (barChart.current)  { barChart.current.destroy();  barChart.current  = null; }
+      if (lineChart.current) { lineChart.current.destroy(); lineChart.current = null; }
+    };
+  }, []);
+
+  // Build/update bar chart when summary changes
+  useEffect(() => {
+    if (!summary || !barRef.current) return;
+    const rooms  = summary.rooms || [];
+    if (rooms.length === 0) return;
+    const labels = rooms.map(r => `Rm ${r.room_number}`);
+    const data   = rooms.map(r => parseFloat(r.total_gb) || 0);
+    if (barChart.current) barChart.current.destroy();
+    barChart.current = new Chart(barRef.current, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Total GB Used',
+          data,
+          backgroundColor: 'rgba(37,99,235,0.7)',
+          borderColor:     'rgba(37,99,235,1)',
+          borderWidth: 1,
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, title: { display: true, text: 'GB' } } },
+      },
+    });
+  }, [summary]);
+
+  // Build/update line chart when bwHistory changes
+  useEffect(() => {
+    if (!bwHistory.length || !lineRef.current) return;
+    const labels    = bwHistory.map((b, i) => `T${i + 1}`);
+    const data      = bwHistory.map(b => parseFloat(b.usage_mbps));
+    const threshold = 8; // default; could pull from VAP data
+    if (lineChart.current) lineChart.current.destroy();
+    lineChart.current = new Chart(lineRef.current, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Usage (Mbps)',
+            data,
+            borderColor: 'rgba(37,99,235,1)',
+            backgroundColor: 'rgba(37,99,235,0.1)',
+            fill: true,
+            tension: 0.35,
+            pointRadius: 3,
+          },
+          {
+            label: 'Throttle Threshold',
+            data: data.map(() => threshold),
+            borderColor: 'rgba(220,38,38,0.8)',
+            borderDash: [6, 4],
+            pointRadius: 0,
+            fill: false,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'top' } },
+        scales: {
+          y: { beginAtZero: true, title: { display: true, text: 'Mbps' } },
+          x: { title: { display: true, text: 'Sample (oldest → newest)' } },
+        },
+      },
+    });
+  }, [bwHistory]);
+
+  async function loadBwHistory(sid) {
+    if (!sid) { setBwHistory([]); return; }
+    const r = await api(token, `/analytics/session-bw?session_id=${sid}&limit=30`);
+    if (r.ok) setBwHistory(await r.json());
+  }
+
+  const totals = summary?.totals || {};
+  const totalThrottleEvents = (summary?.rooms || []).reduce((acc, r) => acc + Number(r.throttle_events || 0), 0);
+
+  return (
+    <div>
+      <PageHeader title="Analytics">
+        <Btn onClick={load} color="gray">↻ Refresh</Btn>
+      </PageHeader>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+        <Stat icon="📊" value={totals.total_gb ? `${Number(totals.total_gb).toFixed(2)} GB` : '0 GB'} label="Total Data Used" />
+        <Stat icon="📱" value={totals.total_sessions ?? 0} label="Total Sessions" />
+        <Stat icon="🚀" value={totals.peak_mbps ? `${Number(totals.peak_mbps).toFixed(1)} Mbps` : '0 Mbps'} label="Peak Usage" />
+        <Stat icon="⚡" value={totalThrottleEvents} label="Throttle Events" />
+      </div>
+
+      <Card title="Bandwidth per Room (Total GB)">
+        {(summary?.rooms?.length ?? 0) === 0
+          ? <p className="text-slate-400 text-sm py-6 text-center">No bandwidth data yet — sessions must generate logs first</p>
+          : <canvas ref={barRef} />
+        }
+      </Card>
+
+      <Card title="Session Bandwidth History">
+        <div className="flex flex-wrap gap-3 items-end mb-4">
+          <Field label="Select Session">
+            <Select style={{width:'260px'}} value={selSession} onChange={e => { setSelSession(e.target.value); loadBwHistory(e.target.value); }}>
+              <option value="">— Choose session —</option>
+              {sessions.map(s => (
+                <option key={s.id} value={s.id}>#{s.id} — {s.device_name || 'Device'} (Room {s.room_number || '?'})</option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+        {bwHistory.length === 0
+          ? <p className="text-slate-400 text-sm py-6 text-center">Select a session to view its bandwidth samples (red dashed line = throttle threshold)</p>
+          : <canvas ref={lineRef} />
+        }
+      </Card>
+
+      {(summary?.rooms?.length ?? 0) > 0 && (
+        <Card title="Per-Room Breakdown">
+          <Tbl head={['Room','Sessions','Total GB','Avg Mbps','Peak Mbps','Throttle Events']}>
+            {summary.rooms.map(r => (
+              <Tr key={r.room_id}>
+                <Td><b>{r.room_number}</b></Td>
+                <Td>{r.total_sessions}</Td>
+                <Td>{Number(r.total_gb || 0).toFixed(3)}</Td>
+                <Td>{Number(r.avg_mbps || 0).toFixed(2)}</Td>
+                <Td>{Number(r.peak_mbps || 0).toFixed(2)}</Td>
+                <Td>{r.throttle_events ?? 0}</Td>
+              </Tr>
+            ))}
+          </Tbl>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ── Settings Tab ──────────────────────────────────────────────────────────────
+
+function SettingsTab({ token }) {
+  const [cur,   setCur]   = useState('');
+  const [npw,   setNpw]   = useState('');
+  const [conf,  setConf]  = useState('');
+  const [msg,   setMsg]   = useState(null);
+  const [audit, setAudit] = useState([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+
+  const loadAudit = useCallback(async () => {
+    setAuditLoading(true);
+    const r = await api(token, '/audit');
+    if (r.ok) setAudit(await r.json());
+    setAuditLoading(false);
+  }, [token]);
+
+  useEffect(() => { loadAudit(); }, [loadAudit]);
+
+  async function changePw(e) {
+    e.preventDefault();
+    if (npw !== conf)   { setMsg({ ok: false, text: 'Passwords do not match' }); return; }
+    if (npw.length < 6) { setMsg({ ok: false, text: 'Min 6 characters' }); return; }
+    const r = await api(token, '/auth/change-password', {
+      method: 'POST', body: JSON.stringify({ current_password: cur, new_password: npw }),
+    });
+    const d = await r.json();
+    setMsg({ ok: r.ok, text: r.ok ? '✅ Password updated successfully' : (d.error || 'Failed') });
+    if (r.ok) { setCur(''); setNpw(''); setConf(''); }
+  }
+
+  return (
+    <div>
+      <PageHeader title="Settings" />
+      <Card title="Change Admin Password" className="max-w-md">
+        <form onSubmit={changePw} className="space-y-3">
+          <Field label="Current Password"><Input type="password" value={cur} onChange={e => setCur(e.target.value)} required /></Field>
+          <Field label="New Password"><Input type="password" value={npw} onChange={e => setNpw(e.target.value)} required /></Field>
+          <Field label="Confirm New Password"><Input type="password" value={conf} onChange={e => setConf(e.target.value)} required /></Field>
+          {msg && <p className={`text-sm ${msg.ok ? 'text-green-600' : 'text-red-600'}`}>{msg.text}</p>}
+          <Btn type="submit" color="blue">Update Password</Btn>
+        </form>
+      </Card>
+      <Card title="System Info" className="max-w-md">
+        <dl className="text-sm space-y-2 text-slate-600">
+          {[
+            ['Frontend',    'React 18 + TailwindCSS + Chart.js'],
+            ['Backend',     'Node.js + Express + TypeScript'],
+            ['Database',    'MariaDB (XAMPP)'],
+            ['Real-time',   'Socket.IO'],
+            ['Auto-expiry', 'Every 60 seconds'],
+            ['Auto-BW log', 'Every 60 seconds per active session'],
+            ['Throttle',    '8 Mbps default — configurable per VAP'],
+          ].map(([k, v]) => (
+            <div key={k}><span className="font-medium text-slate-800">{k}:</span> {v}</div>
+          ))}
+          <div>
+            <span className="font-medium text-slate-800">Guest Portal:</span>{' '}
+            <a href="/guest" target="_blank" className="text-blue-600 hover:underline">{location.origin}/guest</a>
+          </div>
+        </dl>
+      </Card>
+
+      <Card title="Audit Log">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs text-slate-500">Last 100 admin actions</p>
+          <Btn color="gray" size="sm" onClick={loadAudit} disabled={auditLoading}>
+            {auditLoading ? '…' : '↻ Refresh'}
+          </Btn>
+        </div>
+        <Tbl head={['Time','Admin','Action','Details','IP']}>
+          {audit.length === 0
+            ? <Tr><Td className="text-center py-8 text-slate-400" colSpan={5}>No audit entries yet</Td></Tr>
+            : audit.map(e => {
+                const isDestructive = /DELETE|DEACTIVATE/.test(e.action);
+                const isLogin       = /LOGIN|PASSWORD/.test(e.action);
+                return (
+                  <Tr key={e.id}>
+                    <Td className="text-xs text-slate-400 whitespace-nowrap">{new Date(e.occurred_at).toLocaleString()}</Td>
+                    <Td className="font-medium">{e.admin_username}</Td>
+                    <Td><Badge color={isDestructive ? 'red' : isLogin ? 'blue' : 'green'}>{e.action}</Badge></Td>
+                    <Td className="text-xs text-slate-500 max-w-xs truncate" title={e.details}>{e.details}</Td>
+                    <Td className="text-xs text-slate-400">{e.ip_address || '—'}</Td>
+                  </Tr>
+                );
+              })
+          }
+        </Tbl>
+      </Card>
+    </div>
+  );
+}
+
+// ── Dashboard (shell + nav + socket) ─────────────────────────────────────────
+
+const TABS = [
+  { id: 'overview',   label: 'Overview'        },
+  { id: 'sessions',   label: 'Live Sessions'   },
+  { id: 'history',    label: 'History'         },
+  { id: 'vaps',       label: 'VAP / Isolation' },
+  { id: 'vouchers',   label: 'Vouchers'        },
+  { id: 'rooms',      label: 'Rooms'           },
+  { id: 'analytics',  label: '📊 Analytics'   },
+  { id: 'topology',   label: 'Network Map'     },
+  { id: 'settings',   label: 'Settings'        },
+];
+
+function Dashboard({ token, onLogout }) {
+  const [tab,    setTab]    = useState('overview');
+  const [events, setEvents] = useState([]);
+  const [reload, setReload] = useState(0);
+
+  function pushEvent(icon, msg) {
+    setEvents(p => [{ icon, msg, time: new Date().toLocaleTimeString() }, ...p].slice(0, 30));
+  }
+
+  useEffect(() => {
+    const socket = io(location.origin);
+    socket.on('connect',             ()  => pushEvent('🟢', 'Server connected'));
+    socket.on('session:new',         d   => { pushEvent('📱', `New device: ${d.device_name || 'Unknown'} — Room ${d.room_number || '?'}`); setReload(n => n+1); });
+    socket.on('session:disconnected',d   => { pushEvent('👋', `Disconnected: Session #${d.sessionId}${d.reason === 'expired' ? ' (expired)' : ''}`); setReload(n => n+1); });
+    socket.on('session:throttled',   d   => pushEvent('⚡', `Throttled: Session #${d.sessionId} (${d.usage_mbps} Mbps)`));
+    socket.on('session:unthrottled', d   => pushEvent('✅', `Throttle lifted: Session #${d.sessionId}`));
+    socket.on('isolation:blocked',   d   => pushEvent('🔒', `Blocked: Room ${d.source.room} → Room ${d.target.room}`));
+    socket.on('vouchers:updated',    ()  => pushEvent('⏰', 'Voucher(s) auto-expired'));
+    socket.on('bandwidth:update',    d   => {
+      const cell = document.getElementById(`bw-${d.sessionId}`);
+      if (cell) {
+        cell.textContent = `${Number(d.usage_mbps).toFixed(2)} Mbps`;
+        cell.style.fontWeight = '700';
+        cell.style.color = d.is_throttled ? '#dc2626' : '#16a34a';
+      }
+    });
+    return () => socket.disconnect();
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-slate-100">
+      <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+        <div className="flex items-center px-4 h-14 gap-1 flex-wrap">
+          <span className="font-bold text-sm mr-2 whitespace-nowrap">🏨 Hotel WiFi</span>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap ${tab === t.id ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}>
+              {t.label}
+            </button>
+          ))}
+          <button onClick={onLogout} className="ml-auto text-xs border border-slate-200 px-3 py-1.5 rounded hover:bg-slate-50 whitespace-nowrap">Logout</button>
+        </div>
+      </nav>
+      <div className="max-w-7xl mx-auto p-5">
+        {tab === 'overview'   && <OverviewTab   token={token} events={events} reloadSignal={reload} />}
+        {tab === 'sessions'   && <SessionsTab   token={token} />}
+        {tab === 'history'    && <HistoryTab    token={token} />}
+        {tab === 'vaps'       && <VAPsTab       token={token} />}
+        {tab === 'vouchers'   && <VouchersTab   token={token} />}
+        {tab === 'rooms'      && <RoomsTab      token={token} />}
+        {tab === 'analytics'  && <AnalyticsTab  token={token} />}
+        {tab === 'topology'   && <TopologyTab   token={token} />}
+        {tab === 'settings'   && <SettingsTab   token={token} />}
+      </div>
+    </div>
+  );
+}
+
+// ── App root ──────────────────────────────────────────────────────────────────
+
+function App() {
+  const [token, setToken] = useState(() => localStorage.getItem('token'));
+  function login(t)  { setToken(t); localStorage.setItem('token', t); }
+  function logout()  { setToken(null); localStorage.removeItem('token'); }
+  return token ? <Dashboard token={token} onLogout={logout} /> : <LoginScreen onLogin={login} />;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>

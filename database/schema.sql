@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS rooms (
   id INT AUTO_INCREMENT PRIMARY KEY,
   room_number VARCHAR(10) NOT NULL UNIQUE,
   floor INT NOT NULL,
+  ssid VARCHAR(50),
+  wifi_password VARCHAR(20),
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -79,6 +81,16 @@ CREATE TABLE IF NOT EXISTS isolation_events (
   target_session_id INT NOT NULL,
   action VARCHAR(50) DEFAULT 'BLOCKED',
   reason VARCHAR(255),
+  occurred_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Admin audit log
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  admin_username VARCHAR(50) NOT NULL,
+  action VARCHAR(100) NOT NULL,
+  details VARCHAR(255),
+  ip_address VARCHAR(45),
   occurred_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import pool from '../db';
 import { Admin } from '../types';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { logAction } from '../audit';
 
 const router = Router();
 
@@ -43,6 +44,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
       { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as any }
     );
 
+    await logAction(admin.username, 'LOGIN', `Admin logged in`, req.ip);
     res.json({ token, username: admin.username });
   } catch (err) {
     console.error(err);
@@ -69,6 +71,7 @@ router.post('/change-password', authenticate, async (req: AuthRequest, res: Resp
     if (!valid) { res.status(401).json({ error: 'Current password is incorrect' }); return; }
     const hash = await bcrypt.hash(new_password, 10);
     await pool.query('UPDATE admins SET password_hash = ? WHERE id = ?', [hash, admin.id]);
+    await logAction(req.admin!.username, 'CHANGE_PASSWORD', 'Admin changed password', req.ip);
     res.json({ message: 'Password updated successfully' });
   } catch {
     res.status(500).json({ error: 'Failed to update password' });

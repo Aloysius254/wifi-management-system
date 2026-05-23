@@ -1,12 +1,15 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const AfricasTalking = require('africastalking');
 
-const at = AfricasTalking({
-  username: process.env.AT_USERNAME || 'sandbox',
-  apiKey: process.env.AT_API_KEY || '',
-});
-
-const sms = at.SMS;
+function getSms() {
+  const apiKey = process.env.AT_API_KEY;
+  if (!apiKey) return null;
+  const at = AfricasTalking({
+    username: process.env.AT_USERNAME || 'sandbox',
+    apiKey,
+  });
+  return at.SMS;
+}
 
 export async function sendVoucherSMS(
   phone: string,
@@ -15,6 +18,12 @@ export async function sendVoucherSMS(
   durationHours: number,
   guestPortalUrl: string
 ): Promise<boolean> {
+  const sms = getSms();
+  if (!sms) {
+    console.warn('[SMS] AT_API_KEY not set — SMS skipped');
+    return false;
+  }
+
   try {
     // Format phone number to international format
     let formatted = phone.trim().replace(/\s+/g, '');
@@ -25,7 +34,7 @@ export async function sendVoucherSMS(
     }
 
     const message =
-      `🏨 Hotel WiFi Access\n` +
+      `Hotel WiFi Access\n` +
       `Room: ${roomNumber}\n` +
       `Code: ${code}\n` +
       `Duration: ${durationHours} hour(s)\n` +

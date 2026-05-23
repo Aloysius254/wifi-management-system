@@ -4,6 +4,8 @@ import pool from '../db';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { io } from '../index';
 import { sendVoucherSMS } from '../sms';
+import { logAction } from '../audit';
+import { checkRate, clearRate } from '../rateLimit';
 
 const router = Router();
 
@@ -11,7 +13,7 @@ const router = Router();
 router.get('/', authenticate, async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
     const [rows] = await pool.query(`
-      SELECT v.*, r.room_number,
+      SELECT v.*, r.room_number, r.ssid,
         (SELECT COUNT(*) FROM sessions s WHERE s.voucher_id = v.id AND s.is_active = TRUE) AS active_devices
       FROM vouchers v
       LEFT JOIN rooms r ON v.room_id = r.id
@@ -66,6 +68,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<
         [code, room_id ?? null, duration_hours, max_devices]
       );
       created.push({ id: result.insertId, code, room_id, duration_hours, max_devices });
+      await logAction(req.admin!.username, 'CREATE_VOUCHER', `Code ${code} — Room ${roomNumber || 'none'} — ${duration_hours}h / ${max_devices} devices`, req.ip);
 
       // Send SMS if phone number provided (only for single voucher)
       if (guest_phone && quantity === 1) {
@@ -79,6 +82,15 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<
     res.status(500).json({ error: 'Failed to create voucher(s)' });
   }
 });
+
+// Generate a locally-administered unicast MAC address for demo purposes
+function randomMac(): string {
+  return Array.from({ length: 6 }, (_, i) => {
+    const byte = Math.floor(Math.random() * 256);
+    // Byte 0: clear multicast bit (LSB), set locally-administered bit (bit 1)
+    return (i === 0 ? (byte & 0xfe) | 0x02 : byte).toString(16).padStart(2, '0');
+  }).join(':');
+}
 
 // Detect device model from User-Agent string
 function detectDevice(ua: string): string {
@@ -120,6 +132,14 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
   const { device_name, ip_address } = req.body;
   const userAgent = req.headers['user-agent'] || '';
   const clientIp = ip_address || req.ip || null;
+
+  // Rate limit by IP: max 5 failed attempts per 15 minutes
+  const rateKey = clientIp || 'unknown';
+  const rateCheck = checkRate(rateKey);
+  if (rateCheck !== true) {
+    res.status(429).json({ error: `Too many failed attempts. Try again in ${rateCheck} minute(s).` });
+    return;
+  }
   // Auto-detect device model if user didn't provide a name
   const detectedDevice = device_name || detectDevice(userAgent);
 
@@ -133,6 +153,8 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
     if (voucher.expires_at && new Date(voucher.expires_at) < new Date()) {
       res.status(410).json({ error: 'Voucher has expired' }); return;
     }
+    // Valid voucher — reset rate limit counter for this IP
+    clearRate(rateKey);
 
     // Check device limit — but allow reconnect from same IP
     const [deviceRows] = await pool.query<any[]>(
@@ -183,9 +205,10 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
     }
 
     // Create session
+    const deviceMac = randomMac();
     const [sessionResult] = await pool.query<any>(
-      'INSERT INTO sessions (voucher_id, device_name, ip_address, user_agent, vap_id) VALUES (?, ?, ?, ?, ?)',
-      [voucher.id, detectedDevice, clientIp, userAgent, vapId]
+      'INSERT INTO sessions (voucher_id, device_name, device_mac, ip_address, user_agent, vap_id) VALUES (?, ?, ?, ?, ?, ?)',
+      [voucher.id, detectedDevice, deviceMac, clientIp, userAgent, vapId]
     );
 
     const sessionId = sessionResult.insertId;
@@ -196,6 +219,7 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
       voucher_code: voucher.code,
       room_number: voucher.room_number,
       device_name: detectedDevice,
+      device_mac: deviceMac,
       ip_address: clientIp,
       vap_id: vapId,
       connected_at: new Date(),
@@ -208,6 +232,7 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
       expires_at: expiresAt,
       vap_id: vapId,
       device_name: detectedDevice,
+      device_mac: deviceMac,
     });
   } catch (err) {
     console.error(err);
