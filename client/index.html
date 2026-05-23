@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Hotel WiFi Manager</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#f1f5f9;color:#1e293b}
+.hidden{display:none!important}
+nav{background:#fff;border-bottom:1px solid #e2e8f0;padding:0 16px;height:56px;display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:99;flex-wrap:wrap}
+nav .brand{font-weight:700;margin-right:6px;white-space:nowrap}
+nav button{padding:6px 12px;border:none;border-radius:6px;cursor:pointer;background:#f1f5f9;color:#64748b;font-size:13px}
+nav button.active{background:#2563eb;color:#fff}
+nav #logout-btn{margin-left:auto;background:#fff;border:1px solid #e2e8f0}
+#login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f1f5f9}
+.login-box{background:#fff;padding:40px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.1);width:360px}
+.login-box h1{font-size:22px;margin-bottom:4px}
+.login-box p{color:#64748b;margin-bottom:24px;font-size:14px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:13px;font-weight:600;margin-bottom:4px}
+.field input,.field select{width:100%;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px}
+.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600}
+.btn-blue{background:#2563eb;color:#fff}
+.btn-red{background:#dc2626;color:#fff}
+.btn-gray{background:#f1f5f9;border:1px solid #e2e8f0;color:#1e293b}
+.btn-green{background:#16a34a;color:#fff}
+.btn-full{width:100%;padding:10px}
+.page{padding:20px;max-width:1100px;margin:0 auto}
+.page-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px}
+.page-head h2{font-size:20px}
+.stats{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px}
+.stat{background:#fff;border-radius:8px;padding:14px 18px;min-width:150px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.stat .num{font-size:26px;font-weight:700}
+.stat .lbl{font-size:12px;color:#64748b;margin-top:2px}
+.tbl-wrap{background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.08);overflow-x:auto;margin-bottom:20px}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{padding:10px 14px;text-align:left;background:#f8fafc;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.04em}
+td{padding:10px 14px;border-top:1px solid #f1f5f9;vertical-align:middle}
+/* Sessions table column widths */
+#sessions-body tr td:nth-child(1){width:50px;font-weight:700;color:#2563eb}
+#sessions-body tr td:nth-child(2){width:60px}
+#sessions-body tr td:nth-child(3){width:130px}
+#sessions-body tr td:nth-child(4){max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#sessions-body tr td:nth-child(5){width:120px}
+#sessions-body tr td:nth-child(6){width:90px}
+#sessions-body tr td:nth-child(7){width:90px}
+#sessions-body tr td:nth-child(8){width:100px}
+#sessions-body tr td:nth-child(9){width:150px;white-space:nowrap}
+.card{background:#fff;border-radius:8px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:20px}
+.card h3{font-size:15px;margin-bottom:14px}
+.row{display:flex;flex-wrap:wrap;gap:12px}
+.row .field{flex:1;min-width:130px}
+.badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600}
+.green{background:#dcfce7;color:#16a34a}
+.yellow{background:#fef3c7;color:#d97706}
+.red{background:#fee2e2;color:#dc2626}
+.gray{background:#f1f5f9;color:#64748b}
+.blue{background:#dbeafe;color:#2563eb}
+.err{color:#dc2626;font-size:13px;margin-top:8px}
+.ok{color:#16a34a;font-size:13px;margin-top:8px}
+#events-list{list-style:none;font-size:13px;max-height:200px;overflow-y:auto}
+#events-list li{padding:5px 0;border-bottom:1px solid #f1f5f9;color:#475569}
+/* Topology */
+.topo{display:flex;flex-direction:column;align-items:center;gap:0;padding:20px}
+.topo-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.topo-box{background:#fff;border:2px solid #e2e8f0;border-radius:8px;padding:10px 16px;text-align:center;font-size:13px;min-width:90px}
+.topo-box.internet{background:#dbeafe;border-color:#2563eb;font-weight:700}
+.topo-box.router{background:#fef3c7;border-color:#d97706;font-weight:700}
+.topo-box.vap{background:#dcfce7;border-color:#16a34a}
+.topo-box.device{background:#f1f5f9;border-color:#94a3b8;font-size:12px}
+.topo-box.blocked{background:#fee2e2;border-color:#dc2626}
+.topo-arrow{text-align:center;font-size:20px;color:#94a3b8;margin:4px 0}
+.topo-label{font-size:11px;color:#64748b;margin-top:2px}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-wrap">
+  <div class="login-box">
+    <h1>🏨 Hotel WiFi Manager</h1>
+    <p>Admin Portal</p>
+    <form id="login-form">
+      <div class="field"><label>Username</label><input id="u" type="text" value="admin" required/></div>
+      <div class="field"><label>Password</label><input id="p" type="password" required/></div>
+      <button class="btn btn-blue btn-full" type="submit">Sign In</button>
+      <div class="err hidden" id="login-err"></div>
+    </form>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dash" class="hidden">
+  <nav>
+    <span class="brand">🏨 Hotel WiFi</span>
+    <button class="active" onclick="showTab('overview')">Overview</button>
+    <button onclick="showTab('sessions')">Live Sessions</button>
+    <button onclick="showTab('history')">History</button>
+    <button onclick="showTab('vaps')">VAP / Isolation</button>
+    <button onclick="showTab('vouchers')">Vouchers</button>
+    <button onclick="showTab('rooms')">Rooms</button>
+    <button onclick="showTab('topology')">Network Map</button>
+    <button onclick="showTab('settings')">Settings</button>
+    <button id="logout-btn" onclick="logout()">Logout</button>
+  </nav>
+
+  <!-- OVERVIEW -->
+  <div id="tab-overview" class="page">
+    <div class="page-head">
+      <h2>Overview <span style="font-size:12px;color:#16a34a">● LIVE</span></h2>
+      <button class="btn btn-green" onclick="runDemo()">🚀 Demo Mode</button>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="num" id="s-rooms">—</div><div class="lbl">Rooms</div></div>
+      <div class="stat"><div class="num" id="s-devices">—</div><div class="lbl">Connected Devices</div></div>
+      <div class="stat"><div class="num" id="s-vouchers">—</div><div class="lbl">Available Vouchers</div></div>
+      <div class="stat"><div class="num" id="s-throttled">—</div><div class="lbl">Throttled</div></div>
+      <div class="stat"><div class="num" id="s-isolated">—</div><div class="lbl">Isolated VAPs</div></div>
+      <div class="stat"><div class="num" id="s-blocked">—</div><div class="lbl">Isolation Events</div></div>
+    </div>
+    <div class="card"><h3>Recent Events</h3><ul id="events-list"><li>No events yet</li></ul></div>
+  </div>
+
+  <!-- LIVE SESSIONS -->
+  <div id="tab-sessions" class="page hidden">
+    <div class="page-head"><h2>Live Sessions</h2><button class="btn btn-gray" onclick="loadSessions()">↻ Refresh</button></div>
+    <div class="tbl-wrap"><table id="sessions-table">
+      <thead><tr><th>#ID</th><th>Room</th><th>VAP/VLAN</th><th>Device</th><th>IP Address</th><th>Connected</th><th>Bandwidth</th><th>Status</th><th>Action</th></tr></thead>
+      <tbody id="sessions-body"></tbody>
+    </table></div>
+    <div class="card"><h3>🎮 Simulate Bandwidth (Demo)</h3>
+      <p style="font-size:13px;color:#64748b;margin-bottom:12px">Simulate high usage to trigger auto-throttle (threshold: 8 Mbps)</p>
+      <div class="row">
+        <div class="field"><label>Session ID</label><input id="sim-id" type="number" placeholder="1"/></div>
+        <div class="field"><label>Usage Mbps</label><input id="sim-mbps" type="number" placeholder="9.5" step="0.1"/></div>
+      </div>
+      <button class="btn btn-blue" style="margin-top:10px" onclick="simUsage()">Simulate</button>
+      <div id="sim-result" style="margin-top:8px;font-size:13px"></div>
+    </div>
+  </div>
+
+  <!-- SESSION HISTORY -->
+  <div id="tab-history" class="page hidden">
+    <div class="page-head"><h2>Session History</h2><button class="btn btn-gray" onclick="loadHistory()">↻ Refresh</button></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Room</th><th>Device</th><th>IP</th><th>Connected</th><th>Disconnected</th><th>Status</th></tr></thead>
+      <tbody id="history-body"></tbody>
+    </table></div>
+  </div>
+
+  <!-- VAPS -->
+  <div id="tab-vaps" class="page hidden">
+    <div class="page-head"><h2>Virtual Access Points</h2></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Room</th><th>VLAN</th><th>Bandwidth Limit</th><th>Throttle At</th><th>Isolation</th><th>Devices</th><th>Throttled</th><th>Edit</th></tr></thead>
+      <tbody id="vaps-body"></tbody>
+    </table></div>
+    <div class="card" id="vap-edit-card" style="display:none"><h3>Edit VAP Settings</h3>
+      <input type="hidden" id="edit-vap-id"/>
+      <div class="row">
+        <div class="field"><label>Bandwidth Limit (Mbps)</label><input id="edit-bw" type="number" min="1" max="100"/></div>
+        <div class="field"><label>Throttle At (Mbps)</label><input id="edit-throttle" type="number" min="1" max="100"/></div>
+        <div class="field"><label>Client Isolation</label>
+          <select id="edit-isolated"><option value="1">Enabled</option><option value="0">Disabled</option></select>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="btn btn-blue" onclick="saveVap()">Save</button>
+        <button class="btn btn-gray" onclick="document.getElementById('vap-edit-card').style.display='none'">Cancel</button>
+      </div>
+      <div id="vap-save-msg" style="margin-top:8px;font-size:13px"></div>
+    </div>
+    <div class="card"><h3>🔒 Test Client Isolation</h3>
+      <p style="font-size:13px;color:#64748b;margin-bottom:12px">Check if two sessions can communicate — different VAPs will be blocked</p>
+      <div class="row">
+        <div class="field"><label>Source Session ID</label><input id="iso-src" type="number" placeholder="1"/></div>
+        <div class="field"><label>Target Session ID</label><input id="iso-tgt" type="number" placeholder="2"/></div>
+      </div>
+      <button class="btn btn-blue" style="margin-top:10px" onclick="checkIso()">Check Isolation</button>
+      <div id="iso-result" style="margin-top:10px;font-size:14px"></div>
+    </div>
+    <div class="page-head" style="margin-top:20px"><h2>Isolation Events Log</h2></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Time</th><th>Source Room</th><th>Target Room</th><th>Action</th><th>Reason</th></tr></thead>
+      <tbody id="iso-body"></tbody>
+    </table></div>
+  </div>
+
+  <!-- VOUCHERS -->
+  <div id="tab-vouchers" class="page hidden">
+    <div class="page-head"><h2>Vouchers</h2><button class="btn btn-blue" onclick="toggleForm('voucher-form')">+ Create Voucher</button></div>
+    <div id="voucher-form" class="card hidden"><h3>New Voucher</h3>
+      <div class="row">
+        <div class="field"><label>Room</label><select id="v-room"><option value="">— No room —</option></select></div>
+        <div class="field"><label>Duration (hrs)</label><input id="v-dur" type="number" value="24" min="1"/></div>
+        <div class="field"><label>Max Devices</label><input id="v-dev" type="number" value="2" min="1" max="10"/></div>
+        <div class="field"><label>Quantity</label><input id="v-qty" type="number" value="1" min="1" max="100"/></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Guest Phone (optional — sends SMS)</label><input id="v-phone" type="tel" placeholder="e.g. 0712345678"/></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="btn btn-blue" onclick="createVoucher()">Generate</button>
+        <button class="btn btn-gray" onclick="toggleForm('voucher-form')">Cancel</button>
+      </div>
+      <div id="voucher-msg" style="margin-top:8px;font-size:13px"></div>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Code</th><th>Room</th><th>Duration</th><th>Devices</th><th>Status</th><th>Expires</th><th>Actions</th></tr></thead>
+      <tbody id="vouchers-body"></tbody>
+    </table></div>
+  </div>
+
+  <!-- ROOMS -->
+  <div id="tab-rooms" class="page hidden">
+    <div class="page-head"><h2>Rooms</h2><button class="btn btn-blue" onclick="toggleForm('room-form')">+ Add Room</button></div>
+    <div id="room-form" class="card hidden"><h3>Add Room</h3>
+      <div class="row">
+        <div class="field"><label>Room Number</label><input id="r-num" type="text" placeholder="101"/></div>
+        <div class="field"><label>Floor</label><input id="r-floor" type="number" placeholder="1" min="1"/></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <button class="btn btn-blue" onclick="addRoom()">Add Room</button>
+        <button class="btn btn-gray" onclick="toggleForm('room-form')">Cancel</button>
+      </div>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Room</th><th>Floor</th><th>VAP/VLAN</th><th>Status</th><th>Action</th></tr></thead>
+      <tbody id="rooms-body"></tbody>
+    </table></div>
+  </div>
+
+  <!-- NETWORK TOPOLOGY -->
+  <div id="tab-topology" class="page hidden">
+    <div class="page-head"><h2>Network Topology Map</h2><button class="btn btn-gray" onclick="loadTopology()">↻ Refresh</button></div>
+    <div class="card">
+      <p style="font-size:13px;color:#64748b;margin-bottom:16px">Visual representation of the Virtual Access Point isolation architecture</p>
+      <div id="topology-map"></div>
+    </div>
+    <div class="card" style="margin-top:0">
+      <h3>How Client Isolation Works</h3>
+      <p style="font-size:13px;color:#475569;line-height:1.7">
+        Each room is assigned a <b>Virtual Access Point (VAP)</b> with a unique <b>VLAN ID</b>.
+        Devices connected through different VAPs cannot communicate with each other —
+        they cannot see printers, file shares, or other devices from other rooms.
+        This replaces the shared WPA2 password model where all guests were on the same network segment.
+        <br><br>
+        When a guest uses excessive bandwidth (e.g. BitTorrent), the system detects usage above the
+        <b>throttle threshold</b> and flags the session. In a production deployment, this flag
+        would trigger QoS rules on the router to limit that session's bandwidth automatically.
+      </p>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div id="tab-settings" class="page hidden">
+    <div class="page-head"><h2>Settings</h2></div>
+    <div class="card" style="max-width:480px"><h3>Change Admin Password</h3>
+      <div class="field"><label>Current Password</label><input id="pw-current" type="password"/></div>
+      <div class="field"><label>New Password</label><input id="pw-new" type="password"/></div>
+      <div class="field"><label>Confirm New Password</label><input id="pw-confirm" type="password"/></div>
+      <button class="btn btn-blue" onclick="changePassword()">Update Password</button>
+      <div id="pw-msg" style="margin-top:8px;font-size:13px"></div>
+    </div>
+    <div class="card" style="max-width:480px;margin-top:0"><h3>System Info</h3>
+      <p style="font-size:13px;color:#475569;line-height:1.8">
+        <b>Server:</b> Node.js + Express + TypeScript<br>
+        <b>Database:</b> MySQL (XAMPP)<br>
+        <b>Real-time:</b> Socket.IO<br>
+        <b>Guest Portal:</b> <a id="guest-link" href="#" target="_blank" style="color:#2563eb"></a><br>
+        <b>Auto-expiry:</b> Every 60 seconds<br>
+        <b>Default throttle:</b> 8 Mbps per session
+      </p>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const API = window.location.origin + '/api';
+let token = localStorage.getItem('token');
+let currentTab = 'overview';
+const eventLog = [];
+
+const socket = io(window.location.origin);
+socket.on('connect', () => addEvent('🟢 Server connected'));
+socket.on('session:new', d => { addEvent('📱 New device: '+(d.device_name||'Unknown')+' — Room '+(d.room_number||'?')); if(currentTab==='sessions') loadSessions(); loadOverviewStats(); });
+socket.on('session:disconnected', d => { addEvent('👋 Disconnected: Session #'+d.sessionId+(d.reason==='expired'?' (expired)':'')); if(currentTab==='sessions') loadSessions(); if(currentTab==='history') loadHistory(); loadOverviewStats(); });
+socket.on('session:throttled', d => { addEvent('⚡ Throttled: Session #'+d.sessionId+' ('+d.usage_mbps+' Mbps)'); if(currentTab==='sessions') loadSessions(); });
+socket.on('isolation:blocked', d => { addEvent('🔒 Blocked: Room '+d.source.room+' → Room '+d.target.room); });
+socket.on('vouchers:updated', () => { if(currentTab==='vouchers') loadVouchers(); addEvent('⏰ Voucher(s) auto-expired'); });
+
+function addEvent(msg) {
+  eventLog.unshift(new Date().toLocaleTimeString()+' — '+msg);
+  if(eventLog.length>30) eventLog.pop();
+  const el=document.getElementById('events-list');
+  if(el) el.innerHTML=eventLog.map(e=>'<li>'+e+'</li>').join('');
+}
+
+function hdrs(){ return {'Content-Type':'application/json','Authorization':'Bearer '+token}; }
+async function api(path,opts={}){
+  const r=await fetch(API+path,{headers:hdrs(),...opts});
+  if(r.status===401){logout();return null;}
+  return r;
+}
+
+document.getElementById('login-form').onsubmit=async e=>{
+  e.preventDefault();
+  const r=await fetch(API+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('u').value,password:document.getElementById('p').value})});
+  const d=await r.json();
+  if(!r.ok){const el=document.getElementById('login-err');el.textContent=d.error;el.classList.remove('hidden');return;}
+  token=d.token; localStorage.setItem('token',token); startDash();
+};
+
+function logout(){ token=null; localStorage.removeItem('token'); document.getElementById('dash').classList.add('hidden'); document.getElementById('login-wrap').classList.remove('hidden'); }
+
+function startDash(){
+  document.getElementById('login-wrap').classList.add('hidden');
+  document.getElementById('dash').classList.remove('hidden');
+  document.getElementById('guest-link').href=window.location.origin+'/guest';
+  document.getElementById('guest-link').textContent=window.location.origin+'/guest';
+  showTab('overview');
+}
+
+function showTab(name){
+  currentTab=name;
+  document.querySelectorAll('nav button:not(#logout-btn)').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('nav button:not(#logout-btn)').forEach(b=>{if(b.textContent.toLowerCase().replace(/[^a-z]/g,'').includes(name.replace(/[^a-z]/g,''))) b.classList.add('active');});
+  ['overview','sessions','history','vaps','vouchers','rooms','topology','settings'].forEach(t=>{
+    const el=document.getElementById('tab-'+t);
+    if(el) el.classList.toggle('hidden',t!==name);
+  });
+  if(name==='overview') loadOverviewStats();
+  if(name==='sessions') loadSessions();
+  if(name==='history') loadHistory();
+  if(name==='vaps'){loadVaps();loadIsoEvents();}
+  if(name==='vouchers') loadVouchers();
+  if(name==='rooms') loadRooms();
+  if(name==='topology') loadTopology();
+}
+
+function toggleForm(id){ document.getElementById(id).classList.toggle('hidden'); }
+
+async function loadOverviewStats(){
+  const [rooms,vouchers,sessions,vaps,iso]=await Promise.all([
+    api('/rooms').then(r=>r?.json()),
+    api('/vouchers').then(r=>r?.json()),
+    api('/sessions').then(r=>r?.json()),
+    api('/vaps').then(r=>r?.json()),
+    api('/sessions/isolation-events').then(r=>r?.json()),
+  ]);
+  if(rooms) document.getElementById('s-rooms').textContent=rooms.length;
+  if(sessions){document.getElementById('s-devices').textContent=sessions.length;document.getElementById('s-throttled').textContent=sessions.filter(s=>s.is_throttled).length;}
+  if(vouchers) document.getElementById('s-vouchers').textContent=vouchers.filter(v=>v.is_active&&!v.is_used).length;
+  if(vaps) document.getElementById('s-isolated').textContent=vaps.filter(v=>v.is_isolated).length;
+  if(iso) document.getElementById('s-blocked').textContent=iso.length;
+}
+
+async function loadRooms(){
+  const [rr,vr]=await Promise.all([api('/rooms'),api('/vaps')]);
+  if(!rr)return;
+  const rooms=await rr.json(),vaps=vr?await vr.json():[];
+  const vm={};vaps.forEach(v=>vm[v.room_id]=v);
+  const b=document.getElementById('rooms-body');
+  if(!rooms.length){b.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:#64748b">No rooms yet — click + Add Room</td></tr>';return;}
+  b.innerHTML=rooms.map(r=>{
+    const v=vm[r.id];
+    return `<tr><td><b>${r.room_number}</b></td><td>${r.floor}</td>
+    <td>${v?`<span class="badge gray">VAP-${v.id}/VLAN-${v.vlan_id}</span>`:'<span class="badge yellow">No VAP</span>'}</td>
+    <td><span class="badge ${r.is_active?'green':'gray'}">${r.is_active?'Active':'Inactive'}</span></td>
+    <td><button class="btn btn-red" style="padding:4px 10px;font-size:12px" onclick="delRoom(${r.id})">Remove</button></td></tr>`;
+  }).join('');
+}
+
+async function addRoom(){
+  const num=document.getElementById('r-num').value.trim();
+  const floor=parseInt(document.getElementById('r-floor').value);
+  if(!num||!floor){alert('Enter room number and floor');return;}
+  const r=await api('/rooms',{method:'POST',body:JSON.stringify({room_number:num,floor})});
+  if(!r)return;
+  if(!r.ok){const d=await r.json();alert(d.error);return;}
+  document.getElementById('r-num').value='';document.getElementById('r-floor').value='';
+  document.getElementById('room-form').classList.add('hidden');
+  loadRooms();
+}
+
+async function delRoom(id){
+  if(!confirm('Remove room?'))return;
+  await api('/rooms/'+id,{method:'DELETE'});
+  loadRooms();
+}
+
+async function loadVouchers(){
+  const [vr,rr]=await Promise.all([api('/vouchers'),api('/rooms')]);
+  if(!vr)return;
+  const vouchers=await vr.json(),rooms=rr?await rr.json():[];
+  document.getElementById('v-room').innerHTML='<option value="">— No room —</option>'+rooms.map(r=>`<option value="${r.id}">${r.room_number}</option>`).join('');
+  const b=document.getElementById('vouchers-body');
+  if(!vouchers.length){b.innerHTML='<tr><td colspan="7" style="text-align:center;padding:20px;color:#64748b">No vouchers yet — click + Create Voucher</td></tr>';return;}
+  b.innerHTML=vouchers.map(v=>{
+    const exp=v.expires_at&&new Date(v.expires_at)<new Date();
+    const cls=!v.is_active?'gray':exp?'red':v.is_used?'yellow':'green';
+    const lbl=!v.is_active?'Inactive':exp?'Expired':v.is_used?'In Use':'Available';
+    return `<tr>
+      <td><code style="background:#f1f5f9;padding:2px 8px;border-radius:4px;font-size:15px;letter-spacing:2px">${v.code}</code></td>
+      <td>${v.room_number||'—'}</td><td>${v.duration_hours}h</td>
+      <td>${v.active_devices??0}/${v.max_devices}</td>
+      <td><span class="badge ${cls}">${lbl}</span></td>
+      <td style="font-size:12px">${v.expires_at?new Date(v.expires_at).toLocaleString():'—'}</td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap">
+        ${v.is_active?`<button class="btn btn-red" style="padding:4px 10px;font-size:12px" onclick="deactivate(${v.id})">Deactivate</button>`:''}
+        ${v.is_active?`<button class="btn btn-gray" style="padding:4px 10px;font-size:12px" onclick="printVoucher('${v.code}','${v.room_number||''}',${v.duration_hours},${v.max_devices})">🖨 Print</button>`:''}
+      </td></tr>`;
+  }).join('');
+}
+
+async function createVoucher(){
+  const room_id=document.getElementById('v-room').value||null;
+  const duration_hours=parseInt(document.getElementById('v-dur').value);
+  const max_devices=parseInt(document.getElementById('v-dev').value);
+  const quantity=parseInt(document.getElementById('v-qty').value);
+  const guest_phone=document.getElementById('v-phone').value.trim()||null;
+  const msg=document.getElementById('voucher-msg');
+  msg.textContent='Generating...';msg.style.color='#64748b';
+  const r=await api('/vouchers',{method:'POST',body:JSON.stringify({room_id,duration_hours,max_devices,quantity,guest_phone})});
+  if(!r)return;
+  if(!r.ok){const d=await r.json();alert(d.error);msg.textContent='';return;}
+  const d=await r.json();
+  if(guest_phone&&quantity===1){
+    msg.style.color=d.sms_sent?'#16a34a':'#d97706';
+    msg.textContent=d.sms_sent?`✅ SMS sent to ${guest_phone}`:`⚠️ Voucher created but SMS failed — give code manually`;
+  } else { msg.textContent=''; }
+  document.getElementById('v-phone').value='';
+  document.getElementById('voucher-form').classList.add('hidden');
+  loadVouchers();
+}
+
+async function deactivate(id){
+  if(!confirm('Deactivate?'))return;
+  await api('/vouchers/'+id,{method:'DELETE'});
+  loadVouchers();
+}
+
+function printVoucher(code,room,duration,devices){
+  const w=window.open('','_blank','width=420,height=520');
+  w.document.write(`<!DOCTYPE html><html><head><title>WiFi Voucher</title>
+  <style>body{font-family:Arial,sans-serif;padding:30px;text-align:center}
+  .box{border:2px dashed #333;padding:24px;border-radius:8px;max-width:320px;margin:0 auto}
+  h2{font-size:20px;margin-bottom:4px}.code{font-size:34px;font-weight:700;letter-spacing:4px;background:#f1f5f9;padding:12px;border-radius:6px;margin:16px 0;font-family:monospace}
+  .info{font-size:13px;color:#555;margin:4px 0}.url{font-size:12px;color:#2563eb;margin-top:12px;word-break:break-all}
+  .footer{font-size:11px;color:#999;margin-top:16px}@media print{button{display:none}}</style></head><body>
+  <div class="box"><h2>🏨 Hotel WiFi Access</h2>
+  <div class="info">Room: <b>${room||'—'}</b></div>
+  <div class="code">${code}</div>
+  <div class="info">⏱ Duration: <b>${duration} hours</b></div>
+  <div class="info">📱 Max devices: <b>${devices}</b></div>
+  <div class="url">Connect at:<br><b>${window.location.origin}/guest</b></div>
+  <div class="footer">Open browser → enter URL → type code to connect</div></div><br>
+  <button onclick="window.print()" style="padding:10px 24px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨 Print</button>
+  </body></html>`);
+  w.document.close();
+}
+
+async function loadSessions(){
+  const r=await api('/sessions');if(!r)return;
+  const sessions=await r.json();
+  const b=document.getElementById('sessions-body');
+  if(!sessions.length){b.innerHTML='<tr><td colspan="9" style="text-align:center;padding:20px;color:#64748b">No active sessions</td></tr>';return;}
+  b.innerHTML=sessions.map(s=>`<tr>
+    <td><b style="color:#2563eb">#${s.id}</b></td>
+    <td><b>${s.room_number||'—'}</b></td>
+    <td>${s.vap_id?`<span class="badge blue" style="font-size:11px">VAP-${s.vap_id} / VLAN-${s.vlan_id||'?'}</span>`:'<span class="badge yellow">No VAP</span>'}</td>
+    <td title="${s.device_name||''}">${s.device_name||'—'}</td>
+    <td><code style="font-size:12px;background:#f1f5f9;padding:2px 5px;border-radius:4px">${s.ip_address||'—'}</code></td>
+    <td style="font-size:12px;color:#64748b">${new Date(s.connected_at).toLocaleTimeString()}</td>
+    <td id="bw-${s.id}">${s.avg_usage_mbps>0?`<b>${s.avg_usage_mbps}</b> Mbps`:'—'}</td>
+    <td><span class="badge ${s.is_throttled?'red':'green'}">${s.is_throttled?'⚡ Throttled':'✅ Normal'}</span></td>
+    <td style="white-space:nowrap">
+      <button class="btn btn-red" style="padding:4px 8px;font-size:12px" onclick="disconnect(${s.id})">Disconnect</button>
+      <button class="btn btn-gray" style="padding:4px 8px;font-size:12px;margin-left:4px" onclick="document.getElementById('sim-id').value=${s.id};document.getElementById('sim-mbps').value=9.5">⚡ Sim</button>
+    </td>
+  </tr>`).join('');
+}
+
+async function loadHistory(){
+  const r=await api('/sessions/history');if(!r)return;
+  const sessions=await r.json();
+  const b=document.getElementById('history-body');
+  if(!sessions.length){b.innerHTML='<tr><td colspan="6" style="text-align:center;padding:20px;color:#64748b">No session history yet</td></tr>';return;}
+  b.innerHTML=sessions.map(s=>`<tr>
+    <td><b>${s.room_number||'—'}</b></td>
+    <td>${s.device_name||'—'}</td>
+    <td><code style="font-size:12px">${s.ip_address||'—'}</code></td>
+    <td style="font-size:12px">${new Date(s.connected_at).toLocaleString()}</td>
+    <td style="font-size:12px">${s.disconnected_at?new Date(s.disconnected_at).toLocaleString():'—'}</td>
+    <td><span class="badge ${s.is_active?'green':'gray'}">${s.is_active?'Active':'Ended'}</span></td>
+  </tr>`).join('');
+}
+
+async function disconnect(id){
+  if(!confirm('Disconnect?'))return;
+  await api('/sessions/'+id,{method:'DELETE'});
+  loadSessions();
+}
+
+async function simUsage(){
+  const id=document.getElementById('sim-id').value;
+  const mbps=parseFloat(document.getElementById('sim-mbps').value);
+  if(!id||!mbps){alert('Enter session ID and Mbps');return;}
+  const r=await api('/sessions/'+id+'/simulate-usage',{method:'POST',body:JSON.stringify({usage_mbps:mbps})});
+  if(!r)return;
+  const d=await r.json();
+  const el=document.getElementById('sim-result');
+  el.style.color=d.is_throttled?'#dc2626':'#16a34a';
+  el.textContent=d.is_throttled?`⚡ Session #${id} THROTTLED — ${mbps} Mbps exceeds ${d.threshold} Mbps threshold`:`✅ Session #${id} normal — ${mbps} Mbps (threshold: ${d.threshold} Mbps)`;
+  loadSessions();
+}
+
+async function loadVaps(){
+  const r=await api('/vaps');if(!r)return;
+  const vaps=await r.json();
+  document.getElementById('vaps-body').innerHTML=vaps.map(v=>`<tr>
+    <td><b>${v.room_number}</b> <span style="color:#64748b;font-size:12px">Floor ${v.floor}</span></td>
+    <td><span class="badge blue">VLAN ${v.vlan_id}</span></td>
+    <td>${v.bandwidth_limit_mbps} Mbps</td>
+    <td>${v.throttle_threshold_mbps} Mbps</td>
+    <td><span class="badge ${v.is_isolated?'green':'yellow'}">${v.is_isolated?'🔒 Isolated':'⚠️ Open'}</span></td>
+    <td>${v.active_devices}</td>
+    <td>${v.throttled_devices>0?`<span class="badge red">${v.throttled_devices}</span>`:'0'}</td>
+    <td><button class="btn btn-gray" style="padding:4px 10px;font-size:12px" onclick="editVap(${v.id},${v.bandwidth_limit_mbps},${v.throttle_threshold_mbps},${v.is_isolated})">Edit</button></td>
+  </tr>`).join('');
+}
+
+function editVap(id,bw,throttle,isolated){
+  document.getElementById('edit-vap-id').value=id;
+  document.getElementById('edit-bw').value=bw;
+  document.getElementById('edit-throttle').value=throttle;
+  document.getElementById('edit-isolated').value=isolated?'1':'0';
+  document.getElementById('vap-edit-card').style.display='block';
+  document.getElementById('vap-save-msg').textContent='';
+  document.getElementById('vap-edit-card').scrollIntoView({behavior:'smooth'});
+}
+
+async function saveVap(){
+  const id=document.getElementById('edit-vap-id').value;
+  const bandwidth_limit_mbps=parseInt(document.getElementById('edit-bw').value);
+  const throttle_threshold_mbps=parseInt(document.getElementById('edit-throttle').value);
+  const is_isolated=document.getElementById('edit-isolated').value==='1';
+  const r=await api('/vaps/'+id,{method:'PATCH',body:JSON.stringify({bandwidth_limit_mbps,throttle_threshold_mbps,is_isolated})});
+  if(!r)return;
+  const msg=document.getElementById('vap-save-msg');
+  if(r.ok){msg.style.color='#16a34a';msg.textContent='✅ VAP settings saved';}
+  else{msg.style.color='#dc2626';msg.textContent='Failed to save';}
+  loadVaps();
+}
+
+async function loadIsoEvents(){
+  const r=await api('/sessions/isolation-events');if(!r)return;
+  const evts=await r.json();
+  const b=document.getElementById('iso-body');
+  if(!evts.length){b.innerHTML='<tr><td colspan="5" style="text-align:center;padding:16px;color:#64748b">No isolation events yet — use Check Isolation to test</td></tr>';return;}
+  b.innerHTML=evts.map(e=>`<tr>
+    <td style="font-size:12px">${new Date(e.occurred_at).toLocaleString()}</td>
+    <td>Room ${e.source_room||'—'} <code style="font-size:11px">${e.source_ip||''}</code></td>
+    <td>Room ${e.target_room||'—'} <code style="font-size:11px">${e.target_ip||''}</code></td>
+    <td><span class="badge red">${e.action}</span></td>
+    <td style="font-size:12px;color:#64748b">${e.reason}</td>
+  </tr>`).join('');
+}
+
+async function checkIso(){
+  const src=parseInt(document.getElementById('iso-src').value);
+  const tgt=parseInt(document.getElementById('iso-tgt').value);
+  if(!src||!tgt){alert('Enter both session IDs');return;}
+  const r=await api('/sessions/check-isolation',{method:'POST',body:JSON.stringify({source_session_id:src,target_session_id:tgt})});
+  if(!r)return;
+  const d=await r.json();
+  const el=document.getElementById('iso-result');
+  el.style.cssText=`padding:12px;border-radius:8px;background:${d.blocked?'#fee2e2':'#f0fdf4'};border-left:4px solid ${d.blocked?'#dc2626':'#16a34a'}`;
+  el.innerHTML=`<b>${d.blocked?'🔒 BLOCKED — Client Isolation Active':'✅ ALLOWED — Same VAP'}</b><br><span style="color:#64748b;font-size:13px">${d.reason}</span>`;
+  loadIsoEvents();
+}
+
+async function loadTopology(){
+  const [rr,vr,sr]=await Promise.all([api('/rooms'),api('/vaps'),api('/sessions')]);
+  if(!rr)return;
+  const rooms=await rr.json(),vaps=vr?await vr.json():[],sessions=sr?await sr.json():[];
+  const vm={};vaps.forEach(v=>vm[v.room_id]=v);
+  const sm={};sessions.forEach(s=>{if(!sm[s.vap_id])sm[s.vap_id]=[];sm[s.vap_id].push(s);});
+  const map=document.getElementById('topology-map');
+  let html=`<div class="topo">
+    <div class="topo-box internet">🌐 Internet</div>
+    <div class="topo-arrow">↓</div>
+    <div class="topo-box router">📡 Airtel Router<div class="topo-label">192.168.1.1</div></div>
+    <div class="topo-arrow">↓</div>
+    <div class="topo-box" style="background:#f0fdf4;border-color:#16a34a;font-weight:700">🖥️ Hotel WiFi Manager Server<div class="topo-label">${window.location.host}</div></div>
+    <div class="topo-arrow">↓ VAP Assignment</div>
+    <div class="topo-row">`;
+  rooms.forEach(r=>{
+    const v=vm[r.id];
+    const devs=v?sm[v.id]||[]:[];
+    html+=`<div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+      <div class="topo-box vap">Room ${r.room_number}<div class="topo-label">${v?'VLAN '+v.vlan_id:'No VAP'}</div></div>`;
+    if(devs.length){
+      devs.forEach(d=>{
+        html+=`<div class="topo-arrow" style="font-size:14px">↓</div>
+        <div class="topo-box device ${d.is_throttled?'blocked':''}">${d.device_name||'Device'}<div class="topo-label">${d.ip_address||''}</div></div>`;
+      });
+    } else {
+      html+=`<div class="topo-arrow" style="font-size:14px;color:#cbd5e1">↓</div><div class="topo-box device" style="color:#94a3b8">No devices</div>`;
+    }
+    html+=`</div>`;
+  });
+  html+=`</div>
+    <div style="margin-top:16px;padding:10px;background:#fee2e2;border-radius:8px;font-size:13px;text-align:center;color:#dc2626">
+      🔒 Cross-VAP communication is <b>BLOCKED</b> — guests cannot see each other's devices
+    </div></div>`;
+  map.innerHTML=html;
+}
+
+async function changePassword(){
+  const current=document.getElementById('pw-current').value;
+  const newpw=document.getElementById('pw-new').value;
+  const confirm=document.getElementById('pw-confirm').value;
+  const msg=document.getElementById('pw-msg');
+  if(!current||!newpw){msg.style.color='#dc2626';msg.textContent='Fill in all fields';return;}
+  if(newpw!==confirm){msg.style.color='#dc2626';msg.textContent='New passwords do not match';return;}
+  if(newpw.length<6){msg.style.color='#dc2626';msg.textContent='Password must be at least 6 characters';return;}
+  const r=await api('/auth/change-password',{method:'POST',body:JSON.stringify({current_password:current,new_password:newpw})});
+  if(!r)return;
+  const d=await r.json();
+  if(r.ok){msg.style.color='#16a34a';msg.textContent='✅ Password updated successfully';document.getElementById('pw-current').value='';document.getElementById('pw-new').value='';document.getElementById('pw-confirm').value='';}
+  else{msg.style.color='#dc2626';msg.textContent=d.error||'Failed';}
+}
+
+async function runDemo(){
+  if(!confirm('Demo mode will create sample vouchers for all rooms. Continue?'))return;
+  const rr=await api('/rooms');if(!rr)return;
+  const rooms=await rr.json();
+  let created=0;
+  for(const room of rooms.slice(0,3)){
+    const r=await api('/vouchers',{method:'POST',body:JSON.stringify({room_id:room.id,duration_hours:1,max_devices:2,quantity:1})});
+    if(r&&r.ok) created++;
+  }
+  addEvent(`🚀 Demo mode: created ${created} vouchers`);
+  showTab('vouchers');
+}
+
+if(token){startDash();}
+</script>
+</body>
+</html>
