@@ -1,6 +1,10 @@
 import { Router, Response } from 'express';
+import { customAlphabet } from 'nanoid';
 import pool from '../db';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { logAction } from '../audit';
+
+const genPassword = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 10);
 
 const router = Router();
 
@@ -41,9 +45,12 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
   }
 
   try {
+    const ssid = `Hotel_Room_${room_number}`;
+    const wifi_password = genPassword();
+
     const [result] = await pool.query<any>(
-      'INSERT INTO rooms (room_number, floor) VALUES (?, ?)',
-      [room_number, floor]
+      'INSERT INTO rooms (room_number, floor, ssid, wifi_password) VALUES (?, ?, ?, ?)',
+      [room_number, floor, ssid, wifi_password]
     );
     const roomId = result.insertId;
 
@@ -54,7 +61,8 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
       [roomId, vlanId]
     );
 
-    res.status(201).json({ id: roomId, room_number, floor, is_active: true });
+    await logAction(req.admin!.username, 'CREATE_ROOM', `Room ${room_number} (Floor ${floor}) — SSID: ${ssid}`, req.ip);
+    res.status(201).json({ id: roomId, room_number, floor, ssid, wifi_password, is_active: true });
   } catch (err: any) {
     if (err.code === 'ER_DUP_ENTRY') {
       res.status(409).json({ error: 'Room number already exists' });
@@ -82,7 +90,10 @@ router.patch('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
 // DELETE /api/rooms/:id
 router.delete('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const [rows] = await pool.query<any[]>('SELECT room_number FROM rooms WHERE id = ?', [req.params.id]);
     await pool.query('DELETE FROM rooms WHERE id = ?', [req.params.id]);
+    const name = rows[0]?.room_number ?? req.params.id;
+    await logAction(req.admin!.username, 'DELETE_ROOM', `Room ${name} deleted`, req.ip);
     res.json({ message: 'Room deleted' });
   } catch {
     res.status(500).json({ error: 'Failed to delete room' });

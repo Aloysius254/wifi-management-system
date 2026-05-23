@@ -14,7 +14,10 @@ router.get('/', authenticate, async (_req: AuthRequest, res: Response): Promise<
              COALESCE(
                (SELECT AVG(bl.usage_mbps) FROM bandwidth_logs bl
                 WHERE bl.session_id = s.id
-                ORDER BY bl.logged_at DESC LIMIT 5),
+                  AND bl.id >= COALESCE(
+                    (SELECT bl2.id FROM bandwidth_logs bl2
+                     WHERE bl2.session_id = s.id
+                     ORDER BY bl2.id DESC LIMIT 1 OFFSET 4), 0)),
              0) AS avg_usage_mbps
       FROM sessions s
       JOIN vouchers v ON s.voucher_id = v.id
