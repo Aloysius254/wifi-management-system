@@ -29,15 +29,18 @@ router.get('/', async (_req: AuthRequest, res: Response): Promise<void> => {
 // PATCH /api/vaps/:id — update bandwidth limits
 router.patch('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   const { bandwidth_limit_mbps, throttle_threshold_mbps, is_isolated } = req.body;
+  const updates: string[] = [];
+  const values: any[] = [];
+
+  if (bandwidth_limit_mbps !== undefined)    { updates.push('bandwidth_limit_mbps = ?');    values.push(bandwidth_limit_mbps); }
+  if (throttle_threshold_mbps !== undefined) { updates.push('throttle_threshold_mbps = ?'); values.push(throttle_threshold_mbps); }
+  if (is_isolated !== undefined)             { updates.push('is_isolated = ?');             values.push(is_isolated); }
+
+  if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+  values.push(req.params.id);
+
   try {
-    await pool.query(
-      `UPDATE vaps SET
-        bandwidth_limit_mbps = COALESCE(?, bandwidth_limit_mbps),
-        throttle_threshold_mbps = COALESCE(?, throttle_threshold_mbps),
-        is_isolated = COALESCE(?, is_isolated)
-       WHERE id = ?`,
-      [bandwidth_limit_mbps ?? null, throttle_threshold_mbps ?? null, is_isolated ?? null, req.params.id]
-    );
+    await pool.query(`UPDATE vaps SET ${updates.join(', ')} WHERE id = ?`, values);
     res.json({ message: 'VAP updated' });
   } catch {
     res.status(500).json({ error: 'Failed to update VAP' });

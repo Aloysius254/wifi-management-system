@@ -162,7 +162,7 @@
   <div class="hotel-logo">
     <span class="icon">🏨</span>
     <h1>Hotel WiFi</h1>
-    <p>Enter your voucher code to connect</p>
+    <p id="portal-subtitle">Enter your voucher code to connect</p>
   </div>
 
   <!-- Connect Screen -->
@@ -243,11 +243,16 @@
   let timerInterval = null;
   let savedCode = null;
 
-  // Pre-fill code from ?code= URL parameter (QR code scan)
+  // Pre-fill code from ?code= URL parameter (QR code scan) and auto-submit
   const urlParams = new URLSearchParams(window.location.search);
   const urlCode = urlParams.get('code');
   if (urlCode) {
     document.getElementById('voucher-code').value = urlCode.toUpperCase();
+    document.getElementById('portal-subtitle').textContent = 'QR code detected — connecting automatically…';
+    // Auto-connect after short delay so user sees the code being filled in
+    setTimeout(() => {
+      document.getElementById('connect-btn').click();
+    }, 800);
   }
 
   // Check if we have a saved session

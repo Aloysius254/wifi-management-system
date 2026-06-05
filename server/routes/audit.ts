@@ -5,10 +5,12 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 const router = Router();
 router.use(authenticate);
 
-router.get('/', async (_req: AuthRequest, res: Response): Promise<void> => {
+router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const [me] = await pool.query<any[]>('SELECT role FROM admins WHERE id = ?', [req.admin?.adminId]);
+    if (me[0]?.role !== 'manager') { res.status(403).json({ error: 'Manager access required' }); return; }
     const [rows] = await pool.query(
-      'SELECT * FROM audit_logs ORDER BY occurred_at DESC LIMIT 100'
+      'SELECT * FROM audit_logs ORDER BY occurred_at DESC LIMIT 1000'
     );
     res.json(rows);
   } catch {

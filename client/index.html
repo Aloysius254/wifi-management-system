@@ -4,6 +4,12 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Hotel WiFi Manager</title>
+
+  <!-- Preconnect to CDN hosts so DNS + TLS is done before scripts load -->
+  <link rel="preconnect" href="https://cdn.tailwindcss.com">
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -22,10 +28,37 @@
       background: #f1f5f9;
       z-index: 9999;
     }
+
+    /* Loading screen shown while Babel compiles JSX */
+    #initial-loader {
+      position: fixed;
+      inset: 0;
+      background: #f1f5f9;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    #initial-loader .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid #e2e8f0;
+      border-top-color: #2563eb;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-bottom: 16px;
+    }
+    #initial-loader p { color: #64748b; font-size: 14px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body class="bg-slate-100">
-<div id="root"><div class="min-h-screen flex items-center justify-center text-slate-400 text-sm">Loading…</div></div>
+<div id="initial-loader">
+  <div class="spinner"></div>
+  <p>🏨 Loading Hotel WiFi Manager…</p>
+</div>
+<div id="root"></div>
 
 <script type="text/babel">
 const { useState, useEffect, useCallback, useRef } = React;
@@ -324,16 +357,35 @@ function SessionsTab({ token }) {
 // ── History Tab ───────────────────────────────────────────────────────────────
 
 function HistoryTab({ token }) {
-  const [rows, setRows] = useState([]);
+  const [rows,       setRows]       = useState([]);
+  const [filterDays, setFilterDays] = useState('7');
+  const [collapsed,  setCollapsed]  = useState({});
+
   const load = useCallback(async () => {
     const r = await api(token, '/sessions/history');
     if (r.ok) setRows(await r.json());
   }, [token]);
   useEffect(() => { load(); }, [load]);
 
+  // Filter rows by selected day range
+  const cutoff = filterDays === 'all' ? null : new Date(Date.now() - parseInt(filterDays) * 86400000);
+  const filtered = cutoff ? rows.filter(s => new Date(s.connected_at) >= cutoff) : rows;
+
+  // Group rows by date (e.g. "Mon, 3 Jun 2026")
+  const grouped = filtered.reduce((acc, s) => {
+    const day = new Date(s.connected_at).toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+    if (!acc[day]) acc[day] = [];
+    acc[day].push(s);
+    return acc;
+  }, {});
+
+  function toggleDay(day) {
+    setCollapsed(p => ({ ...p, [day]: !p[day] }));
+  }
+
   function exportCSV() {
     const headers = ['Room','Device','MAC Address','IP','Connected','Disconnected','Status'];
-    const lines = rows.map(s => [
+    const lines = filtered.map(s => [
       s.room_number || '', s.device_name || '', s.device_mac || '', s.ip_address || '',
       new Date(s.connected_at).toLocaleString(),
       s.disconnected_at ? new Date(s.disconnected_at).toLocaleString() : '',
@@ -345,25 +397,52 @@ function HistoryTab({ token }) {
   return (
     <div>
       <PageHeader title="Session History">
-        <Btn onClick={exportCSV} color="gray" disabled={rows.length === 0}>⬇ Export CSV</Btn>
+        <select
+          className="border border-slate-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+          value={filterDays}
+          onChange={e => setFilterDays(e.target.value)}>
+          <option value="1">Today</option>
+          <option value="3">Last 3 days</option>
+          <option value="7">Last 7 days</option>
+          <option value="14">Last 14 days</option>
+          <option value="30">Last 30 days</option>
+          <option value="all">All time</option>
+        </select>
+        <Btn onClick={exportCSV} color="gray" disabled={filtered.length === 0}>⬇ Export CSV</Btn>
         <Btn onClick={load} color="gray">↻ Refresh</Btn>
       </PageHeader>
-      <Tbl head={['Room','Device','MAC Address','IP','Connected','Disconnected','Status']}>
-        {rows.length === 0
-          ? <Tr><Td className="text-center py-10 text-slate-400" colSpan={7}>No history yet</Td></Tr>
-          : rows.map(s => (
-            <Tr key={s.id}>
-              <Td><b>{s.room_number || '—'}</b></Td>
-              <Td>{s.device_name || '—'}</Td>
-              <Td><code className="text-xs">{s.device_mac || '—'}</code></Td>
-              <Td><code className="text-xs">{s.ip_address || '—'}</code></Td>
-              <Td className="text-xs text-slate-400">{new Date(s.connected_at).toLocaleString()}</Td>
-              <Td className="text-xs text-slate-400">{s.disconnected_at ? new Date(s.disconnected_at).toLocaleString() : '—'}</Td>
-              <Td><Badge color={s.is_active ? 'green' : 'gray'}>{s.is_active ? 'Active' : 'Ended'}</Badge></Td>
-            </Tr>
-          ))
-        }
-      </Tbl>
+
+      {filtered.length === 0
+        ? <div className="bg-white rounded-lg shadow-sm p-10 text-center text-slate-400 text-sm">No history for this period</div>
+        : Object.entries(grouped).map(([day, sessions]: any) => (
+          <div key={day} className="mb-3">
+            {/* Day header — click to collapse/expand */}
+            <button
+              onClick={() => toggleDay(day)}
+              className="w-full flex items-center justify-between bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg text-sm font-semibold text-slate-700 transition-colors mb-1">
+              <span>📅 {day} <span className="font-normal text-slate-500 ml-2">({sessions.length} session{sessions.length !== 1 ? 's' : ''})</span></span>
+              <span>{collapsed[day] ? '▶ Show' : '▼ Hide'}</span>
+            </button>
+
+            {/* Sessions for this day — hidden when collapsed */}
+            {!collapsed[day] && (
+              <Tbl head={['Room','Device','MAC Address','IP','Connected','Disconnected','Status']}>
+                {sessions.map((s: any) => (
+                  <Tr key={s.id}>
+                    <Td><b>{s.room_number || '—'}</b></Td>
+                    <Td>{s.device_name || '—'}</Td>
+                    <Td><code className="text-xs">{s.device_mac || '—'}</code></Td>
+                    <Td><code className="text-xs">{s.ip_address || '—'}</code></Td>
+                    <Td className="text-xs text-slate-400">{new Date(s.connected_at).toLocaleTimeString()}</Td>
+                    <Td className="text-xs text-slate-400">{s.disconnected_at ? new Date(s.disconnected_at).toLocaleTimeString() : '—'}</Td>
+                    <Td><Badge color={s.is_active ? 'green' : 'gray'}>{s.is_active ? 'Active' : 'Ended'}</Badge></Td>
+                  </Tr>
+                ))}
+              </Tbl>
+            )}
+          </div>
+        ))
+      }
     </div>
   );
 }
@@ -378,6 +457,8 @@ function VAPsTab({ token }) {
   const [isoTgt,   setIsoTgt]   = useState('');
   const [isoResult,setIsoResult]= useState(null);
   const [saveMsg,  setSaveMsg]  = useState('');
+  const [isoFilterDays, setIsoFilterDays] = useState('7');
+  const [isoCollapsed,  setIsoCollapsed]  = useState({});
 
   const load = useCallback(async () => {
     const [vr, ir] = await Promise.all([api(token, '/vaps'), api(token, '/sessions/isolation-events')]);
@@ -470,22 +551,49 @@ function VAPsTab({ token }) {
       </Card>
 
       <PageHeader title="Isolation Events Log">
+        <select
+          className="border border-slate-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+          value={isoFilterDays} onChange={e => setIsoFilterDays(e.target.value)}>
+          <option value="1">Today</option>
+          <option value="7">Last 7 days</option>
+          <option value="30">Last 30 days</option>
+          <option value="all">All time</option>
+        </select>
         <Btn onClick={load} color="gray">↻ Refresh</Btn>
       </PageHeader>
-      <Tbl head={['Time','Source Room','Target Room','Action','Reason']}>
-        {isoEvts.length === 0
-          ? <Tr><Td className="text-center py-8 text-slate-400" colSpan={5}>No events yet — use Check Isolation above to generate one.</Td></Tr>
-          : isoEvts.map(e => (
-            <Tr key={e.id}>
-              <Td className="text-xs text-slate-400 whitespace-nowrap">{new Date(e.occurred_at).toLocaleString()}</Td>
-              <Td>Room {e.source_room || '—'} <code className="text-xs text-slate-400 ml-1">{e.source_ip || ''}</code></Td>
-              <Td>Room {e.target_room || '—'} <code className="text-xs text-slate-400 ml-1">{e.target_ip || ''}</code></Td>
-              <Td><Badge color="red">{e.action}</Badge></Td>
-              <Td className="text-xs text-slate-400">{e.reason}</Td>
-            </Tr>
-          ))
-        }
-      </Tbl>
+      {(() => {
+        const cutoff = isoFilterDays === 'all' ? null : new Date(Date.now() - parseInt(isoFilterDays) * 86400000);
+        const filtered = cutoff ? isoEvts.filter(e => new Date(e.occurred_at) >= cutoff) : isoEvts;
+        const grouped = filtered.reduce((acc, e) => {
+          const day = new Date(e.occurred_at).toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+          if (!acc[day]) acc[day] = [];
+          acc[day].push(e);
+          return acc;
+        }, {});
+        if (filtered.length === 0) return <div className="bg-white rounded-lg shadow-sm p-8 text-center text-slate-400 text-sm">No isolation events for this period</div>;
+        return Object.entries(grouped).map(([day, evts]: any) => (
+          <div key={day} className="mb-3">
+            <button onClick={() => setIsoCollapsed(p => ({...p, [day]: !p[day]}))}
+              className="w-full flex items-center justify-between bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg text-sm font-semibold text-slate-700 transition-colors mb-1">
+              <span>📅 {day} <span className="font-normal text-slate-500 ml-2">({evts.length} event{evts.length !== 1 ? 's' : ''})</span></span>
+              <span>{isoCollapsed[day] ? '▶ Show' : '▼ Hide'}</span>
+            </button>
+            {!isoCollapsed[day] && (
+              <Tbl head={['Time','Source Room','Target Room','Action','Reason']}>
+                {evts.map((e: any) => (
+                  <Tr key={e.id}>
+                    <Td className="text-xs text-slate-400 whitespace-nowrap">{new Date(e.occurred_at).toLocaleTimeString()}</Td>
+                    <Td>Room {e.source_room || '—'} <code className="text-xs text-slate-400 ml-1">{e.source_ip || ''}</code></Td>
+                    <Td>Room {e.target_room || '—'} <code className="text-xs text-slate-400 ml-1">{e.target_ip || ''}</code></Td>
+                    <Td><Badge color="red">{e.action}</Badge></Td>
+                    <Td className="text-xs text-slate-400">{e.reason}</Td>
+                  </Tr>
+                ))}
+              </Tbl>
+            )}
+          </div>
+        ));
+      })()}
     </div>
   );
 }
@@ -499,6 +607,9 @@ function VouchersTab({ token }) {
   const [form,      setForm]      = useState({ room_id: '', duration_hours: 24, max_devices: 2, quantity: 1, guest_phone: '' });
   const [creating,  setCreating]  = useState(false);
   const [createMsg, setCreateMsg] = useState(null);
+  const [search,    setSearch]    = useState('');
+  const [filterRoom,setFilterRoom]= useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
 
   const load = useCallback(async () => {
     const [vr, rr] = await Promise.all([api(token, '/vouchers'), api(token, '/rooms')]);
@@ -538,8 +649,20 @@ function VouchersTab({ token }) {
     load();
   }
 
-  function printVoucher(code, room, ssid, dur, dev) {
-    const guestUrl = `${location.origin}/guest?code=${encodeURIComponent(code)}`;
+  async function deleteVoucher(id) {
+    if (!confirm('Permanently delete this voucher? This cannot be undone.')) return;
+    await api(token, '/vouchers/' + id + '/delete', { method: 'DELETE' });
+    load();
+  }
+
+  async function printVoucher(code, room, ssid, dur, dev) {
+    // Get the real network IP from server so QR works on phones
+    let guestUrl = `${location.origin}/guest?code=${encodeURIComponent(code)}`;
+    try {
+      const r = await fetch('/api/serverip');
+      const d = await r.json();
+      guestUrl = `${d.guestUrl}?code=${encodeURIComponent(code)}`;
+    } catch(e) { /* fallback to location.origin */ }
     const w = window.open('', '_blank', 'width=440,height=660');
     w.document.write(`<!DOCTYPE html><html><head><title>WiFi Voucher</title>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>
@@ -559,7 +682,7 @@ function VouchersTab({ token }) {
     <div id="qr"></div>
     <div class="info">⏱ Duration: <b>${dur}h</b></div>
     <div class="info">📱 Max devices: <b>${dev}</b></div>
-    <div class="url">Scan QR code or visit:<br><b>${location.origin}/guest</b></div>
+    <div class="url">Scan QR code or visit:<br><b>${guestUrl.split('?')[0]}</b></div>
     </div><br>
     <button onclick="window.print()" style="padding:10px 24px;background:#2563eb;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px">🖨 Print</button>
     <script>window.onload=function(){new QRCode(document.getElementById('qr'),{text:'${guestUrl}',width:128,height:128,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});}<\/script>
@@ -569,7 +692,7 @@ function VouchersTab({ token }) {
 
   function exportCSV() {
     const headers = ['Code','Room','SSID','Duration (hrs)','Max Devices','Status','Expires'];
-    const lines = vouchers.map(v => {
+    const lines = filteredVouchers.map(v => {
       const exp = v.expires_at && new Date(v.expires_at) < new Date();
       const label = !v.is_active ? 'Inactive' : exp ? 'Expired' : v.is_used ? 'In Use' : 'Available';
       return [v.code, v.room_number||'', v.ssid||'', v.duration_hours, v.max_devices, label,
@@ -579,12 +702,50 @@ function VouchersTab({ token }) {
     downloadCSV([headers.join(','), ...lines].join('\n'), 'vouchers.csv');
   }
 
+  // Filter vouchers by search, room, and status
+  const filteredVouchers = vouchers.filter(v => {
+    const exp = v.expires_at && new Date(v.expires_at) < new Date();
+    const status = !v.is_active ? 'inactive' : exp ? 'expired' : v.is_used ? 'inuse' : 'available';
+    const matchSearch = !search || v.code.toLowerCase().includes(search.toLowerCase());
+    const matchRoom   = !filterRoom || String(v.room_id) === filterRoom;
+    const matchStatus = filterStatus === 'all' || status === filterStatus;
+    return matchSearch && matchRoom && matchStatus;
+  });
+
   return (
     <div>
       <PageHeader title="Vouchers">
-        <Btn color="gray" onClick={exportCSV} disabled={vouchers.length === 0}>⬇ Export CSV</Btn>
+        <Btn color="gray" onClick={exportCSV} disabled={filteredVouchers.length === 0}>⬇ Export CSV</Btn>
         <Btn color="blue" onClick={() => setShowForm(v => !v)}>+ Create Voucher</Btn>
       </PageHeader>
+
+      {/* Search and filter bar */}
+      <div className="flex flex-wrap gap-2 mb-4 items-center">
+        <input
+          type="text"
+          placeholder="🔍 Search by code..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="border border-slate-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500 w-48"
+        />
+        <select value={filterRoom} onChange={e => setFilterRoom(e.target.value)}
+          className="border border-slate-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500">
+          <option value="">All Rooms</option>
+          {rooms.map(r => <option key={r.id} value={r.id}>Room {r.room_number}</option>)}
+        </select>
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+          className="border border-slate-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500">
+          <option value="all">All Status</option>
+          <option value="available">Available</option>
+          <option value="inuse">In Use</option>
+          <option value="expired">Expired</option>
+          <option value="inactive">Inactive</option>
+        </select>
+        {(search || filterRoom || filterStatus !== 'all') && (
+          <Btn size="sm" color="gray" onClick={() => { setSearch(''); setFilterRoom(''); setFilterStatus('all'); }}>✕ Clear</Btn>
+        )}
+        <span className="text-xs text-slate-400 ml-1">{filteredVouchers.length} of {vouchers.length}</span>
+      </div>
 
       {createMsg && <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 mb-4">{createMsg}</div>}
 
@@ -614,9 +775,9 @@ function VouchersTab({ token }) {
       )}
 
       <Tbl head={['Code','Room','SSID','Duration','Devices','Status','Expires','Actions']}>
-        {vouchers.length === 0
-          ? <Tr><Td className="text-center py-10 text-slate-400" colSpan={8}>No vouchers yet — click + Create Voucher</Td></Tr>
-          : vouchers.map(v => {
+        {filteredVouchers.length === 0
+          ? <Tr><Td className="text-center py-10 text-slate-400" colSpan={8}>{vouchers.length === 0 ? 'No vouchers yet — click + Create Voucher' : 'No vouchers match your search'}</Td></Tr>
+          : filteredVouchers.map(v => {
             const exp   = v.expires_at && new Date(v.expires_at) < new Date();
             const color = !v.is_active ? 'gray' : exp ? 'red' : v.is_used ? 'yellow' : 'green';
             const label = !v.is_active ? 'Inactive' : exp ? 'Expired' : v.is_used ? 'In Use' : 'Available';
@@ -629,8 +790,10 @@ function VouchersTab({ token }) {
                 <Td>{v.active_devices ?? 0} / {v.max_devices}</Td>
                 <Td><Badge color={color}>{label}</Badge></Td>
                 <Td className="text-xs text-slate-400">{v.expires_at ? new Date(v.expires_at).toLocaleString() : '—'}</Td>
-                <Td className="flex gap-1 flex-wrap">
+                <Td className="flex gap-2 flex-wrap items-center">
                   {v.is_active && <Btn size="sm" color="red" onClick={() => deactivate(v.id)}>Deactivate</Btn>}
+                  {!v.is_active && <Btn size="sm" color="red" onClick={() => deleteVoucher(v.id)}>🗑 Delete</Btn>}
+                  {v.is_active && <span className="w-px h-5 bg-slate-200 inline-block mx-1"></span>}
                   {v.is_active && <Btn size="sm" color="gray" onClick={() => printVoucher(v.code, v.room_number, v.ssid, v.duration_hours, v.max_devices)}>🖨 Print</Btn>}
                 </Td>
               </Tr>
@@ -648,6 +811,7 @@ function RoomsTab({ token }) {
   const [rooms,    setRooms]    = useState([]);
   const [vaps,     setVaps]     = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [editing,  setEditing]  = useState(null);
   const [num,      setNum]      = useState('');
   const [floor,    setFloor]    = useState('');
 
@@ -669,6 +833,15 @@ function RoomsTab({ token }) {
     setNum(''); setFloor(''); setShowForm(false); load();
   }
 
+  async function saveEdit(e) {
+    e.preventDefault();
+    const r = await api(token, '/rooms/' + editing.id, {
+      method: 'PATCH', body: JSON.stringify({ room_number: editing.room_number, floor: parseInt(editing.floor) }),
+    });
+    if (!r.ok) { const d = await r.json(); alert(d.error); return; }
+    setEditing(null); load();
+  }
+
   async function delRoom(id) {
     if (!confirm('Remove this room and all its data?')) return;
     await api(token, '/rooms/' + id, { method: 'DELETE' });
@@ -678,10 +851,10 @@ function RoomsTab({ token }) {
   return (
     <div>
       <PageHeader title="Rooms">
-        <Btn color="blue" onClick={() => setShowForm(v => !v)}>+ Add Room</Btn>
+        <Btn color="blue" onClick={() => { setShowForm(v => !v); setEditing(null); }}>+ Add Room</Btn>
       </PageHeader>
 
-      {showForm && (
+      {showForm && !editing && (
         <Card title="Add Room">
           <form onSubmit={addRoom}>
             <div className="flex gap-3 flex-wrap mb-3">
@@ -697,7 +870,22 @@ function RoomsTab({ token }) {
         </Card>
       )}
 
-      <Tbl head={['Room','Floor','SSID','WiFi Password','VAP / VLAN','Status','Action']}>
+      {editing && (
+        <Card title={`Edit Room ${editing.room_number}`}>
+          <form onSubmit={saveEdit}>
+            <div className="flex gap-3 flex-wrap mb-3">
+              <Field label="Room Number"><Input className="w-28" value={editing.room_number} onChange={e => setEditing(p => ({...p, room_number: e.target.value}))} required /></Field>
+              <Field label="Floor"><Input type="number" min="1" className="w-24" value={editing.floor} onChange={e => setEditing(p => ({...p, floor: e.target.value}))} required /></Field>
+            </div>
+            <div className="flex gap-2">
+              <Btn type="submit" color="blue">Save Changes</Btn>
+              <Btn color="gray" onClick={() => setEditing(null)}>Cancel</Btn>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      <Tbl head={['Room','Floor','SSID','WiFi Password','VAP / VLAN','Status','Actions']}>
         {rooms.length === 0
           ? <Tr><Td className="text-center py-10 text-slate-400" colSpan={7}>No rooms — click + Add Room</Td></Tr>
           : rooms.map(r => {
@@ -710,7 +898,10 @@ function RoomsTab({ token }) {
                 <Td><code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded font-mono tracking-wider">{r.wifi_password || '—'}</code></Td>
                 <Td>{vap ? <Badge color="blue">VAP-{vap.id} / VLAN-{vap.vlan_id}</Badge> : <Badge color="yellow">No VAP</Badge>}</Td>
                 <Td><Badge color={r.is_active ? 'green' : 'gray'}>{r.is_active ? 'Active' : 'Inactive'}</Badge></Td>
-                <Td><Btn size="sm" color="red" onClick={() => delRoom(r.id)}>Remove</Btn></Td>
+                <Td className="flex gap-1">
+                  <Btn size="sm" color="gray" onClick={() => { setEditing({...r}); setShowForm(false); }}>✏️ Edit</Btn>
+                  <Btn size="sm" color="red" onClick={() => delRoom(r.id)}>Remove</Btn>
+                </Td>
               </Tr>
             );
           })
@@ -979,6 +1170,12 @@ function SettingsTab({ token }) {
   const [msg,   setMsg]   = useState(null);
   const [audit, setAudit] = useState([]);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [auditFilterDays, setAuditFilterDays] = useState('7');
+  const [auditCollapsed,  setAuditCollapsed]  = useState({});
+  const [admins,    setAdmins]    = useState([]);
+  const [adminRole, setAdminRole] = useState(null);
+  const [newAdmin,  setNewAdmin]  = useState({ username: '', password: '', role: 'staff' });
+  const [adminMsg,  setAdminMsg]  = useState(null);
 
   const loadAudit = useCallback(async () => {
     setAuditLoading(true);
@@ -987,7 +1184,15 @@ function SettingsTab({ token }) {
     setAuditLoading(false);
   }, [token]);
 
-  useEffect(() => { loadAudit(); }, [loadAudit]);
+  const loadAdmins = useCallback(async () => {
+    // Get current user role
+    const mr = await api(token, '/auth/me');
+    if (mr.ok) { const d = await mr.json(); setAdminRole(d.admin?.role); }
+    const r = await api(token, '/auth/admins');
+    if (r.ok) setAdmins(await r.json());
+  }, [token]);
+
+  useEffect(() => { loadAudit(); loadAdmins(); }, [loadAudit, loadAdmins]);
 
   async function changePw(e) {
     e.preventDefault();
@@ -1001,20 +1206,134 @@ function SettingsTab({ token }) {
     if (r.ok) { setCur(''); setNpw(''); setConf(''); }
   }
 
+  async function createAdmin(e) {
+    e.preventDefault(); setAdminMsg(null);
+    const r = await api(token, '/auth/admins', {
+      method: 'POST', body: JSON.stringify(newAdmin),
+    });
+    const d = await r.json();
+    if (!r.ok) { setAdminMsg({ ok: false, text: d.error || 'Failed' }); return; }
+    setAdminMsg({ ok: true, text: `✅ Admin "${newAdmin.username}" created` });
+    setNewAdmin({ username: '', password: '', role: 'staff' });
+    loadAdmins();
+  }
+
+  async function removeAdmin(id, username) {
+    if (!confirm(`Remove admin "${username}"?`)) return;
+    await api(token, '/auth/admins/' + id, { method: 'DELETE' });
+    loadAdmins();
+  }
+
+  const [showPwForm, setShowPwForm] = useState(false);
+  const [updatingRole, setUpdatingRole] = useState(null);
+
+  async function updateRole(id, role) {
+    setUpdatingRole(id);
+    await api(token, '/auth/admins/' + id + '/role', { method: 'PATCH', body: JSON.stringify({ role }) });
+    setUpdatingRole(null);
+    loadAdmins();
+  }
+
   return (
-    <div>
+    <div className="max-w-4xl">
       <PageHeader title="Settings" />
-      <Card title="Change Admin Password" className="max-w-md">
-        <form onSubmit={changePw} className="space-y-3">
-          <Field label="Current Password"><Input type="password" value={cur} onChange={e => setCur(e.target.value)} required /></Field>
-          <Field label="New Password"><Input type="password" value={npw} onChange={e => setNpw(e.target.value)} required /></Field>
-          <Field label="Confirm New Password"><Input type="password" value={conf} onChange={e => setConf(e.target.value)} required /></Field>
-          {msg && <p className={`text-sm ${msg.ok ? 'text-green-600' : 'text-red-600'}`}>{msg.text}</p>}
-          <Btn type="submit" color="blue">Update Password</Btn>
-        </form>
+
+      {/* ── Account Security ── */}
+      <Card>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-semibold text-sm">🔐 Account Security</p>
+            <p className="text-xs text-slate-500 mt-0.5">Change your admin login password</p>
+          </div>
+          <Btn color="gray" onClick={() => { setShowPwForm(v => !v); setMsg(null); }}>
+            {showPwForm ? '✕ Cancel' : '🔑 Change Password'}
+          </Btn>
+        </div>
+        {showPwForm && (
+          <form onSubmit={changePw} className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Field label="Current Password"><Input type="password" value={cur} onChange={e => setCur(e.target.value)} required /></Field>
+            <Field label="New Password"><Input type="password" value={npw} onChange={e => setNpw(e.target.value)} required /></Field>
+            <Field label="Confirm New Password"><Input type="password" value={conf} onChange={e => setConf(e.target.value)} required /></Field>
+            {msg && <p className={`text-sm col-span-3 ${msg.ok ? 'text-green-600' : 'text-red-600'}`}>{msg.text}</p>}
+            <div className="col-span-3"><Btn type="submit" color="blue">Update Password</Btn></div>
+          </form>
+        )}
       </Card>
-      <Card title="System Info" className="max-w-md">
-        <dl className="text-sm space-y-2 text-slate-600">
+
+      {/* ── Admin Accounts (manager only) ── */}
+      {adminRole === 'manager' && (
+        <Card title="👥 Admin Accounts">
+
+          {/* Permissions legend */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 p-3 bg-slate-50 rounded-lg">
+            <div>
+              <p className="text-xs font-semibold text-blue-700 mb-1">🔵 Manager</p>
+              <ul className="text-xs text-slate-600 space-y-0.5">
+                <li>✅ Full system access</li>
+                <li>✅ Create / remove admin accounts</li>
+                <li>✅ Change other users' roles</li>
+                <li>✅ All voucher, room, session controls</li>
+                <li>✅ View all logs and analytics</li>
+              </ul>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-600 mb-1">⚪ Staff</p>
+              <ul className="text-xs text-slate-600 space-y-0.5">
+                <li>✅ Create and manage vouchers</li>
+                <li>✅ View live sessions and history</li>
+                <li>✅ Disconnect guest sessions</li>
+                <li>❌ Cannot manage admin accounts</li>
+                <li>❌ Cannot change roles</li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Admins table */}
+          <Tbl head={['Username','Role','Status','Change Role','Action']}>
+            {admins.map((a: any) => (
+              <Tr key={a.id}>
+                <Td className="font-medium">{a.username}</Td>
+                <Td><Badge color={a.role === 'manager' ? 'blue' : 'gray'}>{a.role}</Badge></Td>
+                <Td><Badge color={a.is_active ? 'green' : 'gray'}>{a.is_active ? 'Active' : 'Inactive'}</Badge></Td>
+                <Td>
+                  <Select className="w-28 text-xs" value={a.role}
+                    onChange={e => updateRole(a.id, e.target.value)}
+                    disabled={updatingRole === a.id}>
+                    <option value="staff">Staff</option>
+                    <option value="manager">Manager</option>
+                  </Select>
+                </Td>
+                <Td>
+                  <Btn size="sm" color="red" onClick={() => removeAdmin(a.id, a.username)}>Remove</Btn>
+                </Td>
+              </Tr>
+            ))}
+          </Tbl>
+
+          {/* Add new admin */}
+          <div className="mt-4 border-t border-slate-100 pt-4">
+            <p className="text-xs font-semibold text-slate-600 mb-3">➕ Add New Admin</p>
+            <form onSubmit={createAdmin}>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                <Field label="Username"><Input placeholder="e.g. john" value={newAdmin.username} onChange={e => setNewAdmin(p => ({...p, username: e.target.value}))} required /></Field>
+                <Field label="Password"><Input type="password" placeholder="Min 6 chars" value={newAdmin.password} onChange={e => setNewAdmin(p => ({...p, password: e.target.value}))} required /></Field>
+                <Field label="Role">
+                  <Select value={newAdmin.role} onChange={e => setNewAdmin(p => ({...p, role: e.target.value}))}>
+                    <option value="staff">Staff</option>
+                    <option value="manager">Manager</option>
+                  </Select>
+                </Field>
+              </div>
+              {adminMsg && <p className={`text-sm mb-2 ${adminMsg.ok ? 'text-green-600' : 'text-red-600'}`}>{adminMsg.text}</p>}
+              <Btn type="submit" color="blue">Add Admin</Btn>
+            </form>
+          </div>
+        </Card>
+      )}
+
+      {/* ── System Info ── */}
+      <Card title="System Info">
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm text-slate-600">
           {[
             ['Frontend',    'React 18 + TailwindCSS + Chart.js'],
             ['Backend',     'Node.js + Express + TypeScript'],
@@ -1033,32 +1352,66 @@ function SettingsTab({ token }) {
         </dl>
       </Card>
 
+      {adminRole === 'manager' && (
       <Card title="Audit Log">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-xs text-slate-500">Last 100 admin actions</p>
-          <Btn color="gray" size="sm" onClick={loadAudit} disabled={auditLoading}>
-            {auditLoading ? '…' : '↻ Refresh'}
-          </Btn>
+        <>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <p className="text-xs text-slate-500">Admin actions log</p>
+          <div className="flex gap-2 items-center">
+            <select
+              className="border border-slate-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500"
+              value={auditFilterDays} onChange={e => setAuditFilterDays(e.target.value)}>
+              <option value="1">Today</option>
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="all">All time</option>
+            </select>
+            <Btn color="gray" size="sm" onClick={loadAudit} disabled={auditLoading}>
+              {auditLoading ? '…' : '↻ Refresh'}
+            </Btn>
+          </div>
         </div>
-        <Tbl head={['Time','Admin','Action','Details','IP']}>
-          {audit.length === 0
-            ? <Tr><Td className="text-center py-8 text-slate-400" colSpan={5}>No audit entries yet</Td></Tr>
-            : audit.map(e => {
-                const isDestructive = /DELETE|DEACTIVATE/.test(e.action);
-                const isLogin       = /LOGIN|PASSWORD/.test(e.action);
-                return (
-                  <Tr key={e.id}>
-                    <Td className="text-xs text-slate-400 whitespace-nowrap">{new Date(e.occurred_at).toLocaleString()}</Td>
-                    <Td className="font-medium">{e.admin_username}</Td>
-                    <Td><Badge color={isDestructive ? 'red' : isLogin ? 'blue' : 'green'}>{e.action}</Badge></Td>
-                    <Td className="text-xs text-slate-500 max-w-xs truncate" title={e.details}>{e.details}</Td>
-                    <Td className="text-xs text-slate-400">{e.ip_address || '—'}</Td>
-                  </Tr>
-                );
-              })
-          }
-        </Tbl>
+        {(() => {
+          const cutoff = auditFilterDays === 'all' ? null : new Date(Date.now() - parseInt(auditFilterDays) * 86400000);
+          const filtered = cutoff ? audit.filter(e => new Date(e.occurred_at) >= cutoff) : audit;
+          const grouped = filtered.reduce((acc, e) => {
+            const day = new Date(e.occurred_at).toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+            if (!acc[day]) acc[day] = [];
+            acc[day].push(e);
+            return acc;
+          }, {});
+          if (filtered.length === 0) return <p className="text-center py-8 text-slate-400 text-sm">No audit entries for this period</p>;
+          return Object.entries(grouped).map(([day, entries]: any) => (
+            <div key={day} className="mb-3">
+              <button onClick={() => setAuditCollapsed(p => ({...p, [day]: !p[day]}))}
+                className="w-full flex items-center justify-between bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg text-sm font-semibold text-slate-700 transition-colors mb-1">
+                <span>📅 {day} <span className="font-normal text-slate-500 ml-2">({entries.length} action{entries.length !== 1 ? 's' : ''})</span></span>
+                <span>{auditCollapsed[day] ? '▶ Show' : '▼ Hide'}</span>
+              </button>
+              {!auditCollapsed[day] && (
+                <Tbl head={['Time','Admin','Action','Details','IP']}>
+                  {entries.map((e: any) => {
+                    const isDestructive = /DELETE|DEACTIVATE/.test(e.action);
+                    const isLogin       = /LOGIN|PASSWORD/.test(e.action);
+                    return (
+                      <Tr key={e.id}>
+                        <Td className="text-xs text-slate-400 whitespace-nowrap">{new Date(e.occurred_at).toLocaleTimeString()}</Td>
+                        <Td className="font-medium">{e.admin_username}</Td>
+                        <Td><Badge color={isDestructive ? 'red' : isLogin ? 'blue' : 'green'}>{e.action}</Badge></Td>
+                        <Td className="text-xs text-slate-500 max-w-xs truncate" title={e.details}>{e.details}</Td>
+                        <Td className="text-xs text-slate-400">{e.ip_address || '—'}</Td>
+                      </Tr>
+                    );
+                  })}
+                </Tbl>
+              )}
+            </div>
+          ));
+        })()}
+        </>
       </Card>
+      )}
     </div>
   );
 }
@@ -1145,6 +1498,9 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+// Hide the initial loader once React has rendered
+document.getElementById('initial-loader').style.display = 'none';
 </script>
 </body>
 </html>

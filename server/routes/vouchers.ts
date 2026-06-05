@@ -240,13 +240,46 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
   }
 });
 
-// DELETE /api/vouchers/:id  (admin)
+// DELETE /api/vouchers/:id  (admin — deactivate)
 router.delete('/:id', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    // 1. Deactivate the voucher
     await pool.query('UPDATE vouchers SET is_active = FALSE WHERE id = ?', [req.params.id]);
-    res.json({ message: 'Voucher deactivated' });
+
+    // 2. Close all active sessions tied to this voucher
+    const [activeSessions] = await pool.query<any[]>(
+      'SELECT id FROM sessions WHERE voucher_id = ? AND is_active = TRUE',
+      [req.params.id]
+    );
+    if (activeSessions.length > 0) {
+      await pool.query(
+        'UPDATE sessions SET is_active = FALSE, disconnected_at = NOW() WHERE voucher_id = ? AND is_active = TRUE',
+        [req.params.id]
+      );
+      // Notify each session in real time so guest portal shows disconnected
+      for (const session of activeSessions) {
+        io.emit('session:disconnected', { sessionId: session.id, reason: 'voucher_deactivated' });
+      }
+    }
+
+    res.json({ message: 'Voucher deactivated', sessions_closed: activeSessions.length });
   } catch {
     res.status(500).json({ error: 'Failed to deactivate voucher' });
+  }
+});
+
+// DELETE /api/vouchers/:id/delete  (admin — hard delete inactive voucher)
+router.delete('/:id/delete', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const [rows] = await pool.query<any[]>('SELECT is_active FROM vouchers WHERE id = ?', [req.params.id]);
+    const voucher = rows[0];
+    if (!voucher) { res.status(404).json({ error: 'Voucher not found' }); return; }
+    if (voucher.is_active) { res.status(400).json({ error: 'Cannot delete an active voucher. Deactivate it first.' }); return; }
+    await pool.query('DELETE FROM vouchers WHERE id = ?', [req.params.id]);
+    await logAction(req.admin!.username, 'DELETE_VOUCHER', `Deleted voucher ID ${req.params.id}`, req.ip);
+    res.json({ message: 'Voucher deleted' });
+  } catch {
+    res.status(500).json({ error: 'Failed to delete voucher' });
   }
 });
 

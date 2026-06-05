@@ -168,8 +168,19 @@ router.post('/check-isolation', authenticate, async (req: AuthRequest, res: Resp
   }
 });
 
-// DELETE /api/sessions/:id — disconnect (public so guest portal can call it)
+// DELETE /api/sessions/:id — disconnect
+// Accepts either admin JWT or the special guest bearer token
 router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
+  const authHeader = req.headers.authorization || '';
+  const isGuest = authHeader === 'Bearer guest';
+  const isAdmin = authHeader.startsWith('Bearer ') && !isGuest;
+
+  // Require either a guest token or a valid admin token
+  if (!isGuest && !isAdmin) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
   try {
     await pool.query(
       'UPDATE sessions SET is_active = FALSE, disconnected_at = NOW() WHERE id = ?',

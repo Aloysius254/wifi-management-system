@@ -75,12 +75,18 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
 // PATCH /api/rooms/:id
 router.patch('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   const { room_number, floor, is_active } = req.body;
+  const updates: string[] = [];
+  const values: any[] = [];
+
+  if (room_number !== undefined) { updates.push('room_number = ?'); values.push(room_number); }
+  if (floor !== undefined)       { updates.push('floor = ?');       values.push(floor); }
+  if (is_active !== undefined)   { updates.push('is_active = ?');   values.push(is_active); }
+
+  if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+  values.push(req.params.id);
 
   try {
-    await pool.query(
-      'UPDATE rooms SET room_number = COALESCE(?, room_number), floor = COALESCE(?, floor), is_active = COALESCE(?, is_active) WHERE id = ?',
-      [room_number ?? null, floor ?? null, is_active ?? null, req.params.id]
-    );
+    await pool.query(`UPDATE rooms SET ${updates.join(', ')} WHERE id = ?`, values);
     res.json({ message: 'Room updated' });
   } catch {
     res.status(500).json({ error: 'Failed to update room' });

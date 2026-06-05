@@ -59,6 +59,29 @@ app.get('/api/myip', (req, res) => {
   res.json({ ip });
 });
 
+// Returns server's real network IP — used by QR code generator
+app.get('/api/serverip', (_req, res) => {
+  const { networkInterfaces } = require('os');
+  const nets = networkInterfaces();
+  let ip = '127.0.0.1';
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === 'IPv4' && !net.internal) {
+        ip = net.address;
+        break;
+      }
+    }
+  }
+  const PORT = process.env.PORT || 3001;
+  res.json({ ip, guestUrl: `http://${ip}:${PORT}/guest` });
+});
+
+// Favicon — prevents 404 noise in logs
+app.get('/favicon.ico', (_req, res) => {
+  res.setHeader('Content-Type', 'image/svg+xml');
+  res.send('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🏨</text></svg>');
+});
+
 // Guest portal — serve guest.html for any non-API route on mobile
 app.get('/guest', (_req, res) => {
   res.sendFile(path.join(process.cwd(), 'client', 'guest.html'));
