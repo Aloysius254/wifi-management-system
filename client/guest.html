@@ -203,16 +203,8 @@
         <div class="value" id="info-room">—</div>
       </div>
       <div class="info-item">
-        <div class="label">VAP / VLAN</div>
-        <div class="value" id="info-vap">—</div>
-      </div>
-      <div class="info-item">
         <div class="label">Time Left</div>
         <div class="value timer" id="info-timer">—</div>
-      </div>
-      <div class="info-item">
-        <div class="label">Your IP</div>
-        <div class="value" id="info-ip">—</div>
       </div>
       <div class="info-item" style="grid-column:span 2">
         <div class="label">Device</div>
@@ -302,9 +294,7 @@
     document.getElementById('connected-subtitle').textContent =
       data.room_number ? `Room ${data.room_number} — Enjoy your stay!` : 'Enjoy your stay!';
     document.getElementById('info-room').textContent = data.room_number || '—';
-    document.getElementById('info-vap').textContent = data.vap_id ? `VAP-${data.vap_id}` : '—';
     document.getElementById('info-device').textContent = data.device_name || '—';
-    getMyIp().then(ip => document.getElementById('info-ip').textContent = ip);
     startTimer();
     showScreen('screen-connected');
   }
@@ -421,13 +411,6 @@
       `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
   }
 
-  async function getMyIp() {
-    try {
-      const res = await fetch(`${SERVER}/api/myip`);
-      const data = await res.json();
-      return data.ip || '—';
-    } catch { return '—'; }
-  }
 </script>
 </body>
 </html>

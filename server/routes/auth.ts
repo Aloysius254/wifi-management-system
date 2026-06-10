@@ -64,6 +64,16 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+// POST /api/auth/logout
+router.post('/logout', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    await logAction(req.admin!.username, 'LOGOUT', 'Admin logged out', req.ip);
+    res.json({ message: 'Logged out' });
+  } catch {
+    res.status(500).json({ error: 'Logout failed' });
+  }
+});
+
 // GET /api/auth/me
 router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {

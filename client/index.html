@@ -51,6 +51,7 @@
     }
     #initial-loader p { color: #64748b; font-size: 14px; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { display: inline-block; animation: spin 0.7s linear infinite; }
   </style>
 </head>
 <body class="bg-slate-100">
@@ -160,6 +161,31 @@ function PageHeader({ title, live, children }) {
   );
 }
 
+// ── Floor label helper ────────────────────────────────────────────────────────
+
+function floorLabel(n) {
+  const num = parseInt(n);
+  if (num === 0) return 'Ground Floor';
+  const suffix = num === 1 ? 'st' : num === 2 ? 'nd' : num === 3 ? 'rd' : 'th';
+  return `${num}${suffix} Floor`;
+}
+
+function RefreshBtn({ onClick, loading }) {
+  const [spinning, setSpinning] = React.useState(false);
+
+  async function handleClick() {
+    setSpinning(true);
+    await onClick();
+    setTimeout(() => setSpinning(false), 600);
+  }
+
+  return (
+    <Btn onClick={handleClick} color="gray" disabled={spinning}>
+      <span style={spinning ? {display:'inline-block', animation:'spin 0.7s linear infinite'} : {}}>↻</span> Refresh
+    </Btn>
+  );
+}
+
 // ── CSV Export helper ─────────────────────────────────────────────────────────
 
 function downloadCSV(csv, filename) {
@@ -177,6 +203,7 @@ function LoginScreen({ onLogin }) {
   const [pass, setPass] = useState('');
   const [err,  setErr]  = useState('');
   const [busy, setBusy] = useState(false);
+  const [showPass, setShowPass] = useState(false);
 
   async function submit(e) {
     e.preventDefault(); setErr(''); setBusy(true);
@@ -200,7 +227,22 @@ function LoginScreen({ onLogin }) {
         <p className="text-slate-500 text-sm mb-6">Admin Portal</p>
         <form onSubmit={submit} className="space-y-3">
           <Field label="Username"><Input value={user} onChange={e => setUser(e.target.value)} required /></Field>
-          <Field label="Password"><Input type="password" value={pass} onChange={e => setPass(e.target.value)} required /></Field>
+          <Field label="Password">
+            <div className="relative">
+              <input
+                type={showPass ? 'text' : 'password'}
+                value={pass}
+                onChange={e => setPass(e.target.value)}
+                required
+                className="border border-slate-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500 w-full pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass(p => !p)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+              >{showPass ? '🙈 Hide' : '👁 Show'}</button>
+            </div>
+          </Field>
           {err && <p className="text-red-600 text-sm">{err}</p>}
           <Btn type="submit" disabled={busy} color="blue" size="lg">{busy ? 'Signing in…' : 'Sign In'}</Btn>
         </form>
@@ -211,7 +253,7 @@ function LoginScreen({ onLogin }) {
 
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
-function OverviewTab({ token, events, reloadSignal }) {
+function OverviewTab({ token, events, reloadSignal, onNavigate }) {
   const [stats, setStats] = useState({});
 
   const load = useCallback(async () => {
@@ -252,12 +294,12 @@ function OverviewTab({ token, events, reloadSignal }) {
         <Btn onClick={runDemo} color="green">🚀 Demo Mode</Btn>
       </PageHeader>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
-        <Stat icon="🏠" value={stats.rooms}     label="Rooms" />
-        <Stat icon="📱" value={stats.devices}   label="Connected" />
-        <Stat icon="🎫" value={stats.vouchers}  label="Avail. Vouchers" />
-        <Stat icon="⚡" value={stats.throttled} label="Throttled" />
-        <Stat icon="🔒" value={stats.isolated}  label="Isolated VAPs" />
-        <Stat icon="🚫" value={stats.blocked}   label="ISO Events" />
+        <div onClick={() => onNavigate('rooms')}    className="cursor-pointer hover:scale-105 transition-transform"><Stat icon="🏠" value={stats.rooms}     label="Rooms" /></div>
+        <div onClick={() => onNavigate('sessions')} className="cursor-pointer hover:scale-105 transition-transform"><Stat icon="📱" value={stats.devices}   label="Connected" /></div>
+        <div onClick={() => onNavigate('vouchers')} className="cursor-pointer hover:scale-105 transition-transform"><Stat icon="🎫" value={stats.vouchers}  label="Avail. Vouchers" /></div>
+        <div onClick={() => onNavigate('sessions')} className="cursor-pointer hover:scale-105 transition-transform"><Stat icon="⚡" value={stats.throttled} label="Throttled" /></div>
+        <div onClick={() => onNavigate('vaps')}     className="cursor-pointer hover:scale-105 transition-transform"><Stat icon="🔒" value={stats.isolated}  label="Isolated VAPs" /></div>
+        <div onClick={() => onNavigate('vaps')}     className="cursor-pointer hover:scale-105 transition-transform"><Stat icon="🚫" value={stats.blocked}   label="ISO Events" /></div>
       </div>
       <Card title="Recent Events">
         {events.length === 0
@@ -283,10 +325,13 @@ function SessionsTab({ token }) {
   const [simId,   setSimId]   = useState('');
   const [simMbps, setSimMbps] = useState('');
   const [simMsg,  setSimMsg]  = useState(null);
+  const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
+    setLoading(true);
     const r = await api(token, '/sessions');
     if (r.ok) setSessions(await r.json());
+    setLoading(false);
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
@@ -310,7 +355,7 @@ function SessionsTab({ token }) {
   return (
     <div>
       <PageHeader title="Live Sessions">
-        <Btn onClick={load} color="gray">↻ Refresh</Btn>
+        <RefreshBtn onClick={load} loading={loading} />
       </PageHeader>
       <Tbl head={['#ID','Room','VAP/VLAN','Device','MAC','IP','Connected','Bandwidth','Status','Action']}>
         {sessions.length === 0
@@ -358,12 +403,15 @@ function SessionsTab({ token }) {
 
 function HistoryTab({ token }) {
   const [rows,       setRows]       = useState([]);
-  const [filterDays, setFilterDays] = useState('7');
+  const [filterDays, setFilterDays] = useState('1');
   const [collapsed,  setCollapsed]  = useState({});
+  const [loading,    setLoading]    = useState(false);
 
   const load = useCallback(async () => {
+    setLoading(true);
     const r = await api(token, '/sessions/history');
     if (r.ok) setRows(await r.json());
+    setLoading(false);
   }, [token]);
   useEffect(() => { load(); }, [load]);
 
@@ -409,7 +457,7 @@ function HistoryTab({ token }) {
           <option value="all">All time</option>
         </select>
         <Btn onClick={exportCSV} color="gray" disabled={filtered.length === 0}>⬇ Export CSV</Btn>
-        <Btn onClick={load} color="gray">↻ Refresh</Btn>
+        <RefreshBtn onClick={load} loading={loading} />
       </PageHeader>
 
       {filtered.length === 0
@@ -457,7 +505,7 @@ function VAPsTab({ token }) {
   const [isoTgt,   setIsoTgt]   = useState('');
   const [isoResult,setIsoResult]= useState(null);
   const [saveMsg,  setSaveMsg]  = useState('');
-  const [isoFilterDays, setIsoFilterDays] = useState('7');
+  const [isoFilterDays, setIsoFilterDays] = useState('1');
   const [isoCollapsed,  setIsoCollapsed]  = useState({});
 
   const load = useCallback(async () => {
@@ -496,7 +544,7 @@ function VAPsTab({ token }) {
       <Tbl head={['Room','VLAN','BW Limit','Throttle At','Isolation','Devices','Throttled','Edit']}>
         {vaps.map(v => (
           <Tr key={v.id}>
-            <Td><b>{v.room_number}</b> <span className="text-xs text-slate-400">Floor {v.floor}</span></Td>
+            <Td><b>{v.room_number}</b> <span className="text-xs text-slate-400">{floorLabel(v.floor)}</span></Td>
             <Td><Badge color="blue">VLAN {v.vlan_id}</Badge></Td>
             <Td>{v.bandwidth_limit_mbps} Mbps</Td>
             <Td>{v.throttle_threshold_mbps} Mbps</Td>
@@ -859,7 +907,7 @@ function RoomsTab({ token }) {
           <form onSubmit={addRoom}>
             <div className="flex gap-3 flex-wrap mb-3">
               <Field label="Room Number"><Input className="w-28" placeholder="101" value={num} onChange={e => setNum(e.target.value)} required /></Field>
-              <Field label="Floor"><Input type="number" min="1" className="w-24" placeholder="1" value={floor} onChange={e => setFloor(e.target.value)} required /></Field>
+              <Field label="Floor"><Input type="number" min="0" className="w-24" placeholder="0 = Ground" value={floor} onChange={e => setFloor(e.target.value)} required /></Field>
             </div>
             <p className="text-xs text-slate-400 mb-3">SSID and WiFi password will be auto-generated.</p>
             <div className="flex gap-2">
@@ -875,7 +923,7 @@ function RoomsTab({ token }) {
           <form onSubmit={saveEdit}>
             <div className="flex gap-3 flex-wrap mb-3">
               <Field label="Room Number"><Input className="w-28" value={editing.room_number} onChange={e => setEditing(p => ({...p, room_number: e.target.value}))} required /></Field>
-              <Field label="Floor"><Input type="number" min="1" className="w-24" value={editing.floor} onChange={e => setEditing(p => ({...p, floor: e.target.value}))} required /></Field>
+              <Field label="Floor"><Input type="number" min="0" className="w-24" value={editing.floor} onChange={e => setEditing(p => ({...p, floor: e.target.value}))} required /></Field>
             </div>
             <div className="flex gap-2">
               <Btn type="submit" color="blue">Save Changes</Btn>
@@ -885,17 +933,16 @@ function RoomsTab({ token }) {
         </Card>
       )}
 
-      <Tbl head={['Room','Floor','SSID','WiFi Password','VAP / VLAN','Status','Actions']}>
+      <Tbl head={['Room','Floor','SSID','VAP / VLAN','Status','Actions']}>
         {rooms.length === 0
-          ? <Tr><Td className="text-center py-10 text-slate-400" colSpan={7}>No rooms — click + Add Room</Td></Tr>
+          ? <Tr><Td className="text-center py-10 text-slate-400" colSpan={6}>No rooms — click + Add Room</Td></Tr>
           : rooms.map(r => {
             const vap = vapMap[r.id];
             return (
               <Tr key={r.id}>
                 <Td><b>{r.room_number}</b></Td>
-                <Td>{r.floor}</Td>
+                <Td>{floorLabel(r.floor)}</Td>
                 <Td><code className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">{r.ssid || `Hotel_Room_${r.room_number}`}</code></Td>
-                <Td><code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded font-mono tracking-wider">{r.wifi_password || '—'}</code></Td>
                 <Td>{vap ? <Badge color="blue">VAP-{vap.id} / VLAN-{vap.vlan_id}</Badge> : <Badge color="yellow">No VAP</Badge>}</Td>
                 <Td><Badge color={r.is_active ? 'green' : 'gray'}>{r.is_active ? 'Active' : 'Inactive'}</Badge></Td>
                 <Td className="flex gap-1">
@@ -1170,7 +1217,7 @@ function SettingsTab({ token }) {
   const [msg,   setMsg]   = useState(null);
   const [audit, setAudit] = useState([]);
   const [auditLoading, setAuditLoading] = useState(false);
-  const [auditFilterDays, setAuditFilterDays] = useState('7');
+  const [auditFilterDays, setAuditFilterDays] = useState('1');
   const [auditCollapsed,  setAuditCollapsed]  = useState({});
   const [admins,    setAdmins]    = useState([]);
   const [adminRole, setAdminRole] = useState(null);
@@ -1368,7 +1415,7 @@ function SettingsTab({ token }) {
               <option value="all">All time</option>
             </select>
             <Btn color="gray" size="sm" onClick={loadAudit} disabled={auditLoading}>
-              {auditLoading ? '…' : '↻ Refresh'}
+              <span className={auditLoading ? 'spin' : ''}>↻</span> Refresh
             </Btn>
           </div>
         </div>
@@ -1474,7 +1521,7 @@ function Dashboard({ token, onLogout }) {
         </div>
       </nav>
       <div className="max-w-7xl mx-auto p-5">
-        {tab === 'overview'   && <OverviewTab   token={token} events={events} reloadSignal={reload} />}
+        {tab === 'overview'   && <OverviewTab   token={token} events={events} reloadSignal={reload} onNavigate={setTab} />}
         {tab === 'sessions'   && <SessionsTab   token={token} />}
         {tab === 'history'    && <HistoryTab    token={token} />}
         {tab === 'vaps'       && <VAPsTab       token={token} />}
@@ -1491,9 +1538,42 @@ function Dashboard({ token, onLogout }) {
 // ── App root ──────────────────────────────────────────────────────────────────
 
 function App() {
-  const [token, setToken] = useState(() => localStorage.getItem('token'));
-  function login(t)  { setToken(t); localStorage.setItem('token', t); }
-  function logout()  { setToken(null); localStorage.removeItem('token'); }
+  const [token, setToken] = useState(null);
+  function login(t)  { setToken(t); }
+  async function logout() {
+    if (token) {
+      try { await api(token, '/auth/logout', { method: 'POST' }); } catch {}
+    }
+    setToken(null);
+  }
+
+  // Auto-logout after 30 minutes of inactivity
+  useEffect(() => {
+    if (!token) return;
+    let timer = setTimeout(async () => {
+      try { await api(token, '/auth/logout', { method: 'POST' }); } catch {}
+      setToken(null);
+      alert('You have been logged out due to inactivity.');
+    }, 30 * 60 * 1000);
+
+    const reset = () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        try { await api(token, '/auth/logout', { method: 'POST' }); } catch {}
+        setToken(null);
+        alert('You have been logged out due to inactivity.');
+      }, 30 * 60 * 1000);
+    };
+
+    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+    events.forEach(e => window.addEventListener(e, reset));
+
+    return () => {
+      clearTimeout(timer);
+      events.forEach(e => window.removeEventListener(e, reset));
+    };
+  }, [token]);
+
   return token ? <Dashboard token={token} onLogout={logout} /> : <LoginScreen onLogin={login} />;
 }
 
