@@ -240,6 +240,42 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
   }
 });
 
+// PATCH /api/vouchers/:id/extend  (admin — add more hours to a voucher)
+router.patch('/:id/extend', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  const { hours } = req.body;
+  if (!hours || isNaN(hours) || hours < 1) {
+    res.status(400).json({ error: 'hours must be a positive number' }); return;
+  }
+  try {
+    const [rows] = await pool.query<any[]>('SELECT * FROM vouchers WHERE id = ?', [req.params.id]);
+    const voucher = rows[0];
+    if (!voucher) { res.status(404).json({ error: 'Voucher not found' }); return; }
+
+    // If voucher has been activated, extend from current expires_at
+    // If not yet activated, extend the duration_hours instead
+    if (voucher.expires_at) {
+      const newExpiry = new Date(voucher.expires_at);
+      newExpiry.setHours(newExpiry.getHours() + parseInt(hours));
+      await pool.query(
+        'UPDATE vouchers SET expires_at = ?, duration_hours = duration_hours + ?, is_active = TRUE WHERE id = ?',
+        [newExpiry, hours, req.params.id]
+      );
+      await logAction(req.admin!.username, 'EXTEND_VOUCHER', `Voucher ID ${req.params.id} extended by ${hours}h — new expiry: ${newExpiry.toISOString()}`, req.ip);
+      res.json({ message: `Voucher extended by ${hours} hour(s)`, expires_at: newExpiry });
+    } else {
+      // Not yet activated — just increase duration
+      await pool.query(
+        'UPDATE vouchers SET duration_hours = duration_hours + ? WHERE id = ?',
+        [hours, req.params.id]
+      );
+      await logAction(req.admin!.username, 'EXTEND_VOUCHER', `Voucher ID ${req.params.id} duration increased by ${hours}h`, req.ip);
+      res.json({ message: `Voucher duration increased by ${hours} hour(s)` });
+    }
+  } catch {
+    res.status(500).json({ error: 'Failed to extend voucher' });
+  }
+});
+
 // DELETE /api/vouchers/:id  (admin — deactivate)
 router.delete('/:id', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {

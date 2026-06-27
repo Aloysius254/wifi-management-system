@@ -6,7 +6,7 @@ import { createServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
 
 import { startExpiryJob } from './expiry';
-import { startBandwidthSimulator } from './bandwidth';
+import { startBandwidthJob } from './bandwidth';
 import authRoutes from './routes/auth';
 import roomRoutes from './routes/rooms';
 import voucherRoutes from './routes/vouchers';
@@ -107,5 +107,5 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`   Network: http://192.168.1.149:${PORT}`);
   console.log(`   Guest portal: http://192.168.1.149:${PORT}/guest\n`);
   startExpiryJob();
-  startBandwidthSimulator();
+  startBandwidthJob();
 });

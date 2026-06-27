@@ -11,7 +11,7 @@ router.use(authenticate);
 // GET /api/rooms
 router.get('/', async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const [rows] = await pool.query('SELECT * FROM rooms ORDER BY floor, room_number');
+    const [rows] = await pool.query('SELECT * FROM rooms ORDER BY floor, CAST(room_number AS UNSIGNED), room_number');
     res.json(rows);
   } catch {
     res.status(500).json({ error: 'Failed to fetch rooms' });
@@ -50,8 +50,12 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
     );
     const roomId = result.insertId;
 
-    // Auto-create a VAP for this room
-    const vlanId = 100 + roomId;
+    // Auto-create a VAP for this room — VLAN ID always matches room number for switch configuration
+    const vlanId = parseInt(room_number);
+    if (!vlanId) {
+      res.status(400).json({ error: 'room_number must be a valid integer for VLAN assignment' });
+      return;
+    }
     await pool.query(
       'INSERT INTO vaps (room_id, vlan_id, bandwidth_limit_mbps, throttle_threshold_mbps) VALUES (?, ?, 10, 8)',
       [roomId, vlanId]

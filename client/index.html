@@ -14,7 +14,7 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <style>
@@ -29,39 +29,14 @@
       z-index: 9999;
     }
 
-    /* Loading screen shown while Babel compiles JSX */
-    #initial-loader {
-      position: fixed;
-      inset: 0;
-      background: #f1f5f9;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 10000;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    }
-    #initial-loader .spinner {
-      width: 40px; height: 40px;
-      border: 3px solid #e2e8f0;
-      border-top-color: #2563eb;
-      border-radius: 50%;
-      animation: spin 0.7s linear infinite;
-      margin-bottom: 16px;
-    }
-    #initial-loader p { color: #64748b; font-size: 14px; }
-    @keyframes spin { to { transform: rotate(360deg); } }
     .spin { display: inline-block; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body class="bg-slate-100">
-<div id="initial-loader">
-  <div class="spinner"></div>
-  <p>🏨 Loading Hotel WiFi Manager…</p>
-</div>
 <div id="root"></div>
 
-<script type="text/babel">
+<script type="text/babel" data-presets="react">
 const { useState, useEffect, useCallback, useRef } = React;
 const API = location.origin + '/api';
 
@@ -276,23 +251,10 @@ function OverviewTab({ token, events, reloadSignal, onNavigate }) {
 
   useEffect(() => { load(); }, [load, reloadSignal]);
 
-  async function runDemo() {
-    if (!confirm('Create demo vouchers for the first 3 rooms?')) return;
-    const rooms = await api(token, '/rooms').then(r => r.json());
-    let n = 0;
-    for (const room of rooms.slice(0, 3)) {
-      const r = await api(token, '/vouchers', { method: 'POST', body: JSON.stringify({ room_id: room.id, duration_hours: 1, max_devices: 2 }) });
-      if (r.ok) n++;
-    }
-    alert(`Demo: created ${n} voucher(s). Go to the Vouchers tab.`);
-    load();
-  }
 
   return (
     <div>
-      <PageHeader title="Overview" live>
-        <Btn onClick={runDemo} color="green">🚀 Demo Mode</Btn>
-      </PageHeader>
+      <PageHeader title="Overview" live />
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
         <div onClick={() => onNavigate('rooms')}    className="cursor-pointer hover:scale-105 transition-transform"><Stat icon="🏠" value={stats.rooms}     label="Rooms" /></div>
         <div onClick={() => onNavigate('sessions')} className="cursor-pointer hover:scale-105 transition-transform"><Stat icon="📱" value={stats.devices}   label="Connected" /></div>
@@ -303,7 +265,7 @@ function OverviewTab({ token, events, reloadSignal, onNavigate }) {
       </div>
       <Card title="Recent Events">
         {events.length === 0
-          ? <p className="text-slate-400 text-sm">No events yet — connect a device or run Demo Mode.</p>
+          ? <p className="text-slate-400 text-sm">No events yet.</p>
           : <ul className="divide-y divide-slate-100 text-sm max-h-56 overflow-y-auto">
               {events.map((e, i) => (
                 <li key={i} className="py-1.5 flex gap-2">
@@ -322,9 +284,6 @@ function OverviewTab({ token, events, reloadSignal, onNavigate }) {
 
 function SessionsTab({ token }) {
   const [sessions, setSessions] = useState([]);
-  const [simId,   setSimId]   = useState('');
-  const [simMbps, setSimMbps] = useState('');
-  const [simMsg,  setSimMsg]  = useState(null);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
@@ -339,16 +298,6 @@ function SessionsTab({ token }) {
   async function disconnect(id) {
     if (!confirm('Disconnect this device?')) return;
     await fetch(location.origin + '/api/sessions/' + id, { method: 'DELETE' });
-    load();
-  }
-
-  async function simulate() {
-    if (!simId || !simMbps) return;
-    const r = await api(token, `/sessions/${simId}/simulate-usage`, {
-      method: 'POST', body: JSON.stringify({ usage_mbps: parseFloat(simMbps) }),
-    });
-    const d = await r.json();
-    setSimMsg(d);
     load();
   }
 
@@ -370,31 +319,12 @@ function SessionsTab({ token }) {
               <Td><code className="text-xs bg-slate-100 px-1 rounded">{s.ip_address || '—'}</code></Td>
               <Td className="text-xs text-slate-400 whitespace-nowrap">{new Date(s.connected_at).toLocaleTimeString()}</Td>
               <Td id={`bw-${s.id}`}>{Number(s.avg_usage_mbps) > 0 ? <b>{Number(s.avg_usage_mbps).toFixed(2)} Mbps</b> : '—'}</Td>
-              <Td><Badge color={s.is_throttled ? 'red' : 'green'}>{s.is_throttled ? '⚡ Throttled' : '✅ Normal'}</Badge></Td>
-              <Td className="whitespace-nowrap">
-                <Btn size="sm" color="red" onClick={() => disconnect(s.id)}>Disconnect</Btn>
-                <Btn size="sm" color="gray" className="ml-1" onClick={() => { setSimId(String(s.id)); setSimMbps('9.5'); }}>⚡ Sim</Btn>
-              </Td>
+              <Td id={`badge-${s.id}`}><Badge color={s.is_throttled ? 'red' : 'green'}>{s.is_throttled ? '⚡ Throttled' : '✅ Normal'}</Badge></Td>
+              <Td><Btn size="sm" color="red" onClick={() => disconnect(s.id)}>Disconnect</Btn></Td>
             </Tr>
           ))
         }
       </Tbl>
-
-      <Card title="🎮 Simulate Bandwidth (Demo)">
-        <p className="text-xs text-slate-500 mb-3">Manually push usage to trigger auto-throttle (default threshold: 8 Mbps)</p>
-        <div className="flex flex-wrap gap-3 items-end">
-          <Field label="Session ID"><Input type="number" className="w-28" value={simId} onChange={e => setSimId(e.target.value)} placeholder="1"/></Field>
-          <Field label="Usage (Mbps)"><Input type="number" step="0.1" className="w-28" value={simMbps} onChange={e => setSimMbps(e.target.value)} placeholder="9.5"/></Field>
-          <Btn color="blue" onClick={simulate}>Simulate</Btn>
-        </div>
-        {simMsg && (
-          <p className={`mt-3 text-sm font-medium ${simMsg.is_throttled ? 'text-red-600' : 'text-green-600'}`}>
-            {simMsg.is_throttled
-              ? `⚡ Session #${simId} THROTTLED — ${simMbps} Mbps exceeds ${simMsg.threshold} Mbps threshold`
-              : `✅ Session #${simId} normal — ${simMbps} Mbps (threshold: ${simMsg.threshold} Mbps)`}
-          </p>
-        )}
-      </Card>
     </div>
   );
 }
@@ -462,7 +392,7 @@ function HistoryTab({ token }) {
 
       {filtered.length === 0
         ? <div className="bg-white rounded-lg shadow-sm p-10 text-center text-slate-400 text-sm">No history for this period</div>
-        : Object.entries(grouped).map(([day, sessions]: any) => (
+        : Object.entries(grouped).map(([day, sessions]) => (
           <div key={day} className="mb-3">
             {/* Day header — click to collapse/expand */}
             <button
@@ -475,7 +405,7 @@ function HistoryTab({ token }) {
             {/* Sessions for this day — hidden when collapsed */}
             {!collapsed[day] && (
               <Tbl head={['Room','Device','MAC Address','IP','Connected','Disconnected','Status']}>
-                {sessions.map((s: any) => (
+                {sessions.map((s) => (
                   <Tr key={s.id}>
                     <Td><b>{s.room_number || '—'}</b></Td>
                     <Td>{s.device_name || '—'}</Td>
@@ -545,7 +475,7 @@ function VAPsTab({ token }) {
         {vaps.map(v => (
           <Tr key={v.id}>
             <Td><b>{v.room_number}</b> <span className="text-xs text-slate-400">{floorLabel(v.floor)}</span></Td>
-            <Td><Badge color="blue">VLAN {v.vlan_id}</Badge></Td>
+            <Td><Badge color="blue">VAP-{v.id} / VLAN-{v.room_number}</Badge></Td>
             <Td>{v.bandwidth_limit_mbps} Mbps</Td>
             <Td>{v.throttle_threshold_mbps} Mbps</Td>
             <Td><Badge color={v.is_isolated ? 'green' : 'yellow'}>{v.is_isolated ? '🔒 Isolated' : '⚠️ Open'}</Badge></Td>
@@ -557,7 +487,7 @@ function VAPsTab({ token }) {
       </Tbl>
 
       {editing && (
-        <Card title={`Edit VAP — Room ${editing.room_number} (VLAN ${editing.vlan_id})`}>
+        <Card title={`Edit VAP — Room ${editing.room_number} (VLAN ${editing.room_number})`}>
           <div className="flex flex-wrap gap-4 mb-3">
             <Field label="Bandwidth Limit (Mbps)">
               <Input type="number" className="w-32" value={editing.bandwidth_limit_mbps}
@@ -619,7 +549,7 @@ function VAPsTab({ token }) {
           return acc;
         }, {});
         if (filtered.length === 0) return <div className="bg-white rounded-lg shadow-sm p-8 text-center text-slate-400 text-sm">No isolation events for this period</div>;
-        return Object.entries(grouped).map(([day, evts]: any) => (
+        return Object.entries(grouped).map(([day, evts]) => (
           <div key={day} className="mb-3">
             <button onClick={() => setIsoCollapsed(p => ({...p, [day]: !p[day]}))}
               className="w-full flex items-center justify-between bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg text-sm font-semibold text-slate-700 transition-colors mb-1">
@@ -628,7 +558,7 @@ function VAPsTab({ token }) {
             </button>
             {!isoCollapsed[day] && (
               <Tbl head={['Time','Source Room','Target Room','Action','Reason']}>
-                {evts.map((e: any) => (
+                {evts.map((e) => (
                   <Tr key={e.id}>
                     <Td className="text-xs text-slate-400 whitespace-nowrap">{new Date(e.occurred_at).toLocaleTimeString()}</Td>
                     <Td>Room {e.source_room || '—'} <code className="text-xs text-slate-400 ml-1">{e.source_ip || ''}</code></Td>
@@ -689,6 +619,18 @@ function VouchersTab({ token }) {
     setShowForm(false);
     setForm({ room_id: '', duration_hours: 24, max_devices: 2, quantity: 1, guest_phone: '' });
     load();
+  }
+
+  async function extendVoucher(id, currentExpiry) {
+    const hours = prompt('How many hours to add?', '24');
+    if (!hours || isNaN(hours) || parseInt(hours) < 1) return;
+    const r = await api(token, '/vouchers/' + id + '/extend', {
+      method: 'PATCH',
+      body: JSON.stringify({ hours: parseInt(hours) }),
+    });
+    const d = await r.json();
+    if (r.ok) { alert(`✅ ${d.message}`); load(); }
+    else { alert('❌ ' + d.error); }
   }
 
   async function deactivate(id) {
@@ -839,6 +781,7 @@ function VouchersTab({ token }) {
                 <Td><Badge color={color}>{label}</Badge></Td>
                 <Td className="text-xs text-slate-400">{v.expires_at ? new Date(v.expires_at).toLocaleString() : '—'}</Td>
                 <Td className="flex gap-2 flex-wrap items-center">
+                  {v.is_active && <Btn size="sm" color="green" onClick={() => extendVoucher(v.id, v.expires_at)}>+Time</Btn>}
                   {v.is_active && <Btn size="sm" color="red" onClick={() => deactivate(v.id)}>Deactivate</Btn>}
                   {!v.is_active && <Btn size="sm" color="red" onClick={() => deleteVoucher(v.id)}>🗑 Delete</Btn>}
                   {v.is_active && <span className="w-px h-5 bg-slate-200 inline-block mx-1"></span>}
@@ -943,7 +886,7 @@ function RoomsTab({ token }) {
                 <Td><b>{r.room_number}</b></Td>
                 <Td>{floorLabel(r.floor)}</Td>
                 <Td><code className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">{r.ssid || `Hotel_Room_${r.room_number}`}</code></Td>
-                <Td>{vap ? <Badge color="blue">VAP-{vap.id} / VLAN-{vap.vlan_id}</Badge> : <Badge color="yellow">No VAP</Badge>}</Td>
+                <Td>{vap ? <Badge color="blue">VAP-{vap.id} / VLAN-{r.room_number}</Badge> : <Badge color="yellow">No VAP</Badge>}</Td>
                 <Td><Badge color={r.is_active ? 'green' : 'gray'}>{r.is_active ? 'Active' : 'Inactive'}</Badge></Td>
                 <Td className="flex gap-1">
                   <Btn size="sm" color="gray" onClick={() => { setEditing({...r}); setShowForm(false); }}>✏️ Edit</Btn>
@@ -999,7 +942,7 @@ function TopologyTab({ token }) {
                 <div key={r.id} className="flex flex-col items-center gap-1.5 min-w-[100px]">
                   <div className="bg-green-50 border-2 border-green-400 rounded-lg px-3 py-2 text-center text-xs w-full">
                     <div className="font-semibold">Room {r.room_number}</div>
-                    {v && <div className="text-slate-400">VLAN {v.vlan_id}</div>}
+                    {v && <div className="text-slate-400">VLAN {r.room_number}</div>}
                     {r.ssid && <div className="text-blue-600 text-xs truncate max-w-[90px]">{r.ssid}</div>}
                   </div>
                   {devs.length > 0
@@ -1337,7 +1280,7 @@ function SettingsTab({ token }) {
 
           {/* Admins table */}
           <Tbl head={['Username','Role','Status','Change Role','Action']}>
-            {admins.map((a: any) => (
+            {admins.map((a) => (
               <Tr key={a.id}>
                 <Td className="font-medium">{a.username}</Td>
                 <Td><Badge color={a.role === 'manager' ? 'blue' : 'gray'}>{a.role}</Badge></Td>
@@ -1429,7 +1372,7 @@ function SettingsTab({ token }) {
             return acc;
           }, {});
           if (filtered.length === 0) return <p className="text-center py-8 text-slate-400 text-sm">No audit entries for this period</p>;
-          return Object.entries(grouped).map(([day, entries]: any) => (
+          return Object.entries(grouped).map(([day, entries]) => (
             <div key={day} className="mb-3">
               <button onClick={() => setAuditCollapsed(p => ({...p, [day]: !p[day]}))}
                 className="w-full flex items-center justify-between bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg text-sm font-semibold text-slate-700 transition-colors mb-1">
@@ -1438,7 +1381,7 @@ function SettingsTab({ token }) {
               </button>
               {!auditCollapsed[day] && (
                 <Tbl head={['Time','Admin','Action','Details','IP']}>
-                  {entries.map((e: any) => {
+                  {entries.map((e) => {
                     const isDestructive = /DELETE|DEACTIVATE/.test(e.action);
                     const isLogin       = /LOGIN|PASSWORD/.test(e.action);
                     return (
@@ -1495,13 +1438,32 @@ function Dashboard({ token, onLogout }) {
     socket.on('session:unthrottled', d   => pushEvent('✅', `Throttle lifted: Session #${d.sessionId}`));
     socket.on('isolation:blocked',   d   => pushEvent('🔒', `Blocked: Room ${d.source.room} → Room ${d.target.room}`));
     socket.on('vouchers:updated',    ()  => pushEvent('⏰', 'Voucher(s) auto-expired'));
-    socket.on('bandwidth:update',    d   => {
-      const cell = document.getElementById(`bw-${d.sessionId}`);
-      if (cell) {
-        cell.textContent = `${Number(d.usage_mbps).toFixed(2)} Mbps`;
-        cell.style.fontWeight = '700';
-        cell.style.color = d.is_throttled ? '#dc2626' : '#16a34a';
+    // Live bandwidth update — fires every 60s per active session
+    socket.on('session:bandwidth',   d   => {
+      // Update the Mbps cell
+      const bwCell = document.getElementById(`bw-${d.sessionId}`);
+      if (bwCell) {
+        bwCell.innerHTML = `<b>${Number(d.avg_mbps).toFixed(2)} Mbps</b>`;
+        bwCell.style.color = d.is_throttled ? '#dc2626' : '#16a34a';
       }
+      // Update the status badge cell
+      const badgeCell = document.getElementById(`badge-${d.sessionId}`);
+      if (badgeCell) {
+        if (d.is_throttled) {
+          badgeCell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">⚡ Throttled</span>';
+        } else {
+          badgeCell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">✅ Normal</span>';
+        }
+      }
+    });
+    // Throttle state change — push to events feed and reload sessions list
+    socket.on('session:throttle',    d   => {
+      if (d.is_throttled) {
+        pushEvent('⚡', `Throttled: Session #${d.sessionId} Room ${d.room_number || '?'} — avg ${Number(d.avg_mbps).toFixed(2)} Mbps`);
+      } else {
+        pushEvent('✅', `Throttle lifted: Session #${d.sessionId} Room ${d.room_number || '?'} — avg ${Number(d.avg_mbps).toFixed(2)} Mbps`);
+      }
+      setReload(n => n + 1);
     });
     return () => socket.disconnect();
   }, []);
@@ -1537,32 +1499,43 @@ function Dashboard({ token, onLogout }) {
 
 // ── App root ──────────────────────────────────────────────────────────────────
 
+const TOKEN_KEY = 'admin_token';
+
 function App() {
-  const [token, setToken] = useState(null);
-  function login(t)  { setToken(t); }
+  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY));
+
+  // Validate saved token on first load — silently clear if expired
+  useEffect(() => {
+    const saved = localStorage.getItem(TOKEN_KEY);
+    if (!saved) return;
+    api(saved, '/auth/me')
+      .then(r => { if (!r.ok) { localStorage.removeItem(TOKEN_KEY); setToken(null); } })
+      .catch(() => {});
+  }, []);
+
+  function login(t) { localStorage.setItem(TOKEN_KEY, t); setToken(t); }
   async function logout() {
     if (token) {
       try { await api(token, '/auth/logout', { method: 'POST' }); } catch {}
     }
+    localStorage.removeItem(TOKEN_KEY);
     setToken(null);
   }
 
   // Auto-logout after 30 minutes of inactivity
   useEffect(() => {
     if (!token) return;
-    let timer = setTimeout(async () => {
+    const doLogout = async () => {
       try { await api(token, '/auth/logout', { method: 'POST' }); } catch {}
+      localStorage.removeItem(TOKEN_KEY);
       setToken(null);
       alert('You have been logged out due to inactivity.');
-    }, 30 * 60 * 1000);
+    };
+    let timer = setTimeout(doLogout, 15 * 60 * 1000);
 
     const reset = () => {
       clearTimeout(timer);
-      timer = setTimeout(async () => {
-        try { await api(token, '/auth/logout', { method: 'POST' }); } catch {}
-        setToken(null);
-        alert('You have been logged out due to inactivity.');
-      }, 30 * 60 * 1000);
+      timer = setTimeout(doLogout, 15 * 60 * 1000);
     };
 
     const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
@@ -1574,13 +1547,9 @@ function App() {
     };
   }, [token]);
 
-  return token ? <Dashboard token={token} onLogout={logout} /> : <LoginScreen onLogin={login} />;
-}
+  return token ? <Dashboard token={token} onLogout={logout} /> : <LoginScreen onLogin={login} />;}
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-
-// Hide the initial loader once React has rendered
-document.getElementById('initial-loader').style.display = 'none';
 </script>
 </body>
 </html>

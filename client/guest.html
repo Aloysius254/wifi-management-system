@@ -312,6 +312,12 @@
       document.getElementById('throttle-warning').style.display = 'none';
     }
   });
+  // New throttle event from bandwidth job
+  socket.on('session:throttle', (data) => {
+    if (data.sessionId === sessionId) {
+      document.getElementById('throttle-warning').style.display = data.is_throttled ? 'flex' : 'none';
+    }
+  });
   socket.on('session:disconnected', (data) => {
     if (data.sessionId === sessionId) {
       showScreen('screen-disconnected');

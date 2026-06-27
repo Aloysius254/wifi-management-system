@@ -107,7 +107,7 @@ export function startExpiryJob() {
       // 6. Delete old audit logs
       const [deletedAudit] = await pool.query<any>(
         `DELETE FROM audit_logs
-         WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+         WHERE occurred_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
         [AUDIT_LOG_DAYS]
       );
       if (deletedAudit.affectedRows > 0) {

@@ -73,52 +73,6 @@ router.get('/isolation-events', authenticate, async (_req: AuthRequest, res: Res
   }
 });
 
-// POST /api/sessions/:id/simulate-usage — simulate bandwidth usage for demo
-router.post('/:id/simulate-usage', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
-  const { usage_mbps } = req.body;
-  const sessionId = req.params.id;
-
-  if (!usage_mbps || usage_mbps < 0) {
-    res.status(400).json({ error: 'usage_mbps required' }); return;
-  }
-
-  try {
-    // Log bandwidth usage
-    await pool.query(
-      'INSERT INTO bandwidth_logs (session_id, usage_mbps) VALUES (?, ?)',
-      [sessionId, usage_mbps]
-    );
-
-    // Get session VAP limits
-    const [rows] = await pool.query<any[]>(`
-      SELECT s.id, s.is_throttled, vap.throttle_threshold_mbps, vap.bandwidth_limit_mbps
-      FROM sessions s
-      LEFT JOIN vaps vap ON s.vap_id = vap.id
-      WHERE s.id = ?
-    `, [sessionId]);
-
-    const session = rows[0];
-    if (!session) { res.status(404).json({ error: 'Session not found' }); return; }
-
-    // Auto-throttle if over threshold
-    const shouldThrottle = usage_mbps >= session.throttle_threshold_mbps;
-    if (shouldThrottle && !session.is_throttled) {
-      await pool.query('UPDATE sessions SET is_throttled = TRUE WHERE id = ?', [sessionId]);
-      io.emit('session:throttled', { sessionId: Number(sessionId), usage_mbps });
-    } else if (!shouldThrottle && session.is_throttled) {
-      await pool.query('UPDATE sessions SET is_throttled = FALSE WHERE id = ?', [sessionId]);
-      io.emit('session:unthrottled', { sessionId: Number(sessionId) });
-    }
-
-    io.emit('bandwidth:update', { sessionId: Number(sessionId), usage_mbps, is_throttled: shouldThrottle });
-
-    res.json({ logged: true, is_throttled: shouldThrottle, threshold: session.throttle_threshold_mbps });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to log usage' });
-  }
-});
-
 // POST /api/sessions/check-isolation — check if two sessions can communicate
 router.post('/check-isolation', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   const { source_session_id, target_session_id } = req.body;
