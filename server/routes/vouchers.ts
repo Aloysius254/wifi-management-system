@@ -6,6 +6,7 @@ import { io } from '../index';
 import { sendVoucherSMS } from '../sms';
 import { logAction } from '../audit';
 import { checkRate, clearRate } from '../rateLimit';
+import { mikrotikAllowGuest, mikrotikRemoveGuestByIp, mikrotikAssignPortVlan, mikrotikReleasePortVlan } from '../mikrotik';
 
 const router = Router();
 
@@ -131,7 +132,18 @@ function detectDevice(ua: string): string {
 router.post('/:code/activate', async (req: Request, res: Response): Promise<void> => {
   const { device_name, ip_address } = req.body;
   const userAgent = req.headers['user-agent'] || '';
-  const clientIp = ip_address || req.ip || null;
+
+  // Normalize the client IP — strip IPv6-mapped prefix (::ffff:192.168.x.x → 192.168.x.x)
+  function normalizeIp(raw: string | undefined): string | null {
+    if (!raw) return null;
+    const s = Array.isArray(raw) ? raw[0] : raw;
+    return s.replace(/^::ffff:/, '').trim() || null;
+  }
+
+  const rawIp = ip_address
+    || (req.headers['x-forwarded-for'] as string | undefined)
+    || req.socket.remoteAddress;
+  const clientIp = normalizeIp(rawIp);
 
   // Rate limit by IP: max 5 failed attempts per 15 minutes
   const rateKey = clientIp || 'unknown';
@@ -156,6 +168,28 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
     // Valid voucher — reset rate limit counter for this IP
     clearRate(rateKey);
 
+    // CRITICAL: Enforce device-per-room constraint
+    // Check if this device (by IP) already has an active session in a DIFFERENT room
+    if (clientIp && voucher.room_id) {
+      const [conflictRows] = await pool.query<any[]>(
+        `SELECT s.id, v.room_id, r.room_number
+         FROM sessions s
+         JOIN vouchers v ON s.voucher_id = v.id
+         LEFT JOIN rooms r ON v.room_id = r.id
+         WHERE s.ip_address = ? AND s.is_active = TRUE AND v.room_id != ? AND v.room_id IS NOT NULL
+         LIMIT 1`,
+        [clientIp, voucher.room_id]
+      );
+
+      if (conflictRows[0]) {
+        res.status(409).json({
+          error: `This device is already connected in Room ${conflictRows[0].room_number}. A device cannot be active in multiple rooms simultaneously. Please disconnect from the other room first.`,
+          conflictRoom: conflictRows[0].room_number,
+        });
+        return;
+      }
+    }
+
     // Check device limit — but allow reconnect from same IP
     const [deviceRows] = await pool.query<any[]>(
       'SELECT COUNT(*) AS count FROM sessions WHERE voucher_id = ? AND is_active = TRUE AND ip_address != ?',
@@ -170,13 +204,21 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
     if (existingRows[0]) {
       // Same device reconnecting — return existing session
       const existing = existingRows[0];
+      let reconnectVapLabel: string | null = null;
+      if (existing.vap_id) {
+        const [vapInfo] = await pool.query<any[]>('SELECT vlan_id FROM vaps WHERE id = ?', [existing.vap_id]);
+        if (vapInfo[0]) reconnectVapLabel = `VAP-${vapInfo[0].vlan_id}`;
+      }
       res.status(200).json({
         sessionId: existing.id,
         message: 'Reconnected successfully',
         room_number: voucher.room_number,
         expires_at: voucher.expires_at,
         vap_id: existing.vap_id,
+        vap_label: reconnectVapLabel,
         device_name: existing.device_name,
+        device_mac: existing.device_mac,
+        ip_address: clientIp,
         reconnected: true,
       });
       return;
@@ -213,6 +255,19 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
 
     const sessionId = sessionResult.insertId;
 
+    // Allow guest IP through MikroTik firewall after successful activation
+    if (clientIp) {
+      await mikrotikAllowGuest(clientIp, sessionId, voucher.room_number ?? 'unknown', voucher.duration_hours);
+    }
+
+    // Assign switch port to room VLAN (bridge VLAN filtering on CRS/CSS)
+    if (voucher.room_number) {
+      const vlanId = parseInt(voucher.room_number);
+      if (!isNaN(vlanId)) {
+        await mikrotikAssignPortVlan(voucher.room_number, vlanId, sessionId);
+      }
+    }
+
     // Emit real-time event to admin dashboard
     io.emit('session:new', {
       sessionId,
@@ -225,14 +280,23 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
       connected_at: new Date(),
     });
 
+    // Fetch VAP VLAN label if available
+    let vapLabel: string | null = null;
+    if (vapId) {
+      const [vapInfo] = await pool.query<any[]>('SELECT vlan_id FROM vaps WHERE id = ?', [vapId]);
+      if (vapInfo[0]) vapLabel = `VAP-${vapInfo[0].vlan_id}`;
+    }
+
     res.status(201).json({
       sessionId,
       message: 'Connected successfully',
       room_number: voucher.room_number,
       expires_at: expiresAt,
       vap_id: vapId,
+      vap_label: vapLabel,
       device_name: detectedDevice,
       device_mac: deviceMac,
+      ip_address: clientIp,
     });
   } catch (err) {
     console.error(err);
@@ -284,7 +348,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response): Pro
 
     // 2. Close all active sessions tied to this voucher
     const [activeSessions] = await pool.query<any[]>(
-      'SELECT id FROM sessions WHERE voucher_id = ? AND is_active = TRUE',
+      'SELECT id, ip_address FROM sessions WHERE voucher_id = ? AND is_active = TRUE',
       [req.params.id]
     );
     if (activeSessions.length > 0) {
@@ -292,8 +356,11 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response): Pro
         'UPDATE sessions SET is_active = FALSE, disconnected_at = NOW() WHERE voucher_id = ? AND is_active = TRUE',
         [req.params.id]
       );
-      // Notify each session in real time so guest portal shows disconnected
+      // Remove each session's IP from MikroTik and notify guest portal
       for (const session of activeSessions) {
+        if (session.ip_address) {
+          await mikrotikRemoveGuestByIp(session.ip_address);
+        }
         io.emit('session:disconnected', { sessionId: session.id, reason: 'voucher_deactivated' });
       }
     }

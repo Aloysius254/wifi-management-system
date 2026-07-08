@@ -11,8 +11,14 @@ router.use(authenticate);
 const MBPS_TO_GB_PER_SAMPLE = 60 / 8388608;
 
 // GET /api/analytics/summary — per-room bandwidth stats + global totals
-router.get('/summary', async (_req: AuthRequest, res: Response): Promise<void> => {
+router.get('/summary', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    // Default to last 7 days; pass ?days=30 or ?days=all for other ranges
+    const days = req.query.days as string || '7';
+    const dateFilter = days === 'all'
+      ? ''
+      : `AND bl.logged_at >= DATE_SUB(NOW(), INTERVAL ${parseInt(days)} DAY)`;
+
     const [rooms] = await pool.query(`
       SELECT r.id AS room_id, r.room_number,
         COUNT(DISTINCT s.id)                                                        AS total_sessions,
@@ -23,9 +29,9 @@ router.get('/summary', async (_req: AuthRequest, res: Response): Promise<void> =
       FROM rooms r
       LEFT JOIN vouchers v  ON v.room_id    = r.id
       LEFT JOIN sessions s  ON s.voucher_id = v.id
-      LEFT JOIN bandwidth_logs bl ON bl.session_id = s.id
+      LEFT JOIN bandwidth_logs bl ON bl.session_id = s.id ${dateFilter}
       GROUP BY r.id, r.room_number
-      ORDER BY total_gb DESC
+      ORDER BY CAST(r.room_number AS UNSIGNED), r.room_number
     `);
 
     const [totals] = await pool.query<any[]>(`
@@ -35,7 +41,7 @@ router.get('/summary', async (_req: AuthRequest, res: Response): Promise<void> =
         COALESCE(ROUND(MAX(bl.usage_mbps), 2), 0)                              AS peak_mbps,
         COALESCE(COUNT(bl.id), 0)                                              AS log_entries
       FROM sessions s
-      LEFT JOIN bandwidth_logs bl ON bl.session_id = s.id
+      LEFT JOIN bandwidth_logs bl ON bl.session_id = s.id ${dateFilter}
     `);
 
     res.json({ rooms, totals: (totals as any[])[0] });

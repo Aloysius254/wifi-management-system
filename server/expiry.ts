@@ -1,5 +1,7 @@
 import pool from './db';
 import { io } from './index';
+import { mikrotikRemoveGuestByIp, mikrotikReleasePortVlan, mikrotikFlushConntrack } from './mikrotik';
+import { mikrotikRemoveThrottleQueue } from './bandwidth';
 
 // Retention settings — configure in .env
 // VOUCHER_CLEANUP_HOURS   — how long to keep inactive vouchers (default: 48h)
@@ -28,10 +30,11 @@ export function startExpiryJob() {
     try {
       // 1. Find active sessions whose voucher has expired
       const [expiredSessions] = await pool.query<any[]>(`
-        SELECT s.id, s.voucher_id, v.code, r.room_number
+        SELECT s.id, s.voucher_id, s.ip_address, v.code, r.room_number, vap.vlan_id
         FROM sessions s
         JOIN vouchers v ON s.voucher_id = v.id
         LEFT JOIN rooms r ON v.room_id = r.id
+        LEFT JOIN vaps vap ON s.vap_id = vap.id
         WHERE s.is_active = TRUE
           AND v.expires_at IS NOT NULL
           AND v.expires_at < NOW()
@@ -42,6 +45,7 @@ export function startExpiryJob() {
           'UPDATE sessions SET is_active = FALSE, disconnected_at = NOW() WHERE id = ?',
           [session.id]
         );
+        // Emit immediately so portal updates right away
         io.emit('session:disconnected', { sessionId: session.id, reason: 'expired' });
         io.emit('session:expired', {
           sessionId: session.id,
@@ -49,6 +53,15 @@ export function startExpiryJob() {
           room_number: session.room_number,
         });
         console.log(`[Expiry] Session #${session.id} expired (voucher: ${session.code})`);
+        // Run MikroTik cleanup in parallel — don't block the loop
+        const ip = session.ip_address?.replace(/^::ffff:/, '').trim();
+        Promise.all([
+          ip ? mikrotikRemoveGuestByIp(ip).then(() => mikrotikFlushConntrack(ip)) : Promise.resolve(),
+          session.room_number && session.vlan_id
+            ? mikrotikReleasePortVlan(session.room_number, session.vlan_id, session.id)
+            : Promise.resolve(),
+          mikrotikRemoveThrottleQueue(session.id),
+        ]).catch(err => console.error(`[Expiry] MikroTik error for session #${session.id}:`, err));
       }
 
       // 2. Deactivate expired vouchers

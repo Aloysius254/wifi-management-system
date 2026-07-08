@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import pool from '../db';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { io } from '../index';
+import { mikrotikRemoveGuestByIp, mikrotikReleasePortVlan, mikrotikFlushConntrack } from '../mikrotik';
+import { mikrotikRemoveThrottleQueue, mikrotikCreateThrottleQueue } from '../bandwidth';
 
 const router = Router();
 
@@ -123,27 +125,100 @@ router.post('/check-isolation', authenticate, async (req: AuthRequest, res: Resp
 });
 
 // DELETE /api/sessions/:id — disconnect
-// Accepts either admin JWT or the special guest bearer token
+// Accepts admin JWT (any Bearer token) or the special guest "Bearer guest" token
 router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
   const authHeader = req.headers.authorization || '';
-  const isGuest = authHeader === 'Bearer guest';
-  const isAdmin = authHeader.startsWith('Bearer ') && !isGuest;
-
-  // Require either a guest token or a valid admin token
-  if (!isGuest && !isAdmin) {
-    res.status(401).json({ error: 'Unauthorized' });
+  // Accept any Bearer token — admins have JWT, guests send "Bearer guest"
+  if (!authHeader.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'Unauthorized — Bearer token required' });
     return;
   }
 
   try {
+    // Fetch the session's IP and room info before closing it
+    const [rows] = await pool.query<any[]>(
+      `SELECT s.ip_address, r.room_number, vap.vlan_id
+       FROM sessions s
+       LEFT JOIN vouchers v ON s.voucher_id = v.id
+       LEFT JOIN rooms r ON v.room_id = r.id
+       LEFT JOIN vaps vap ON s.vap_id = vap.id
+       WHERE s.id = ?`,
+      [req.params.id]
+    );
+    const sessionIp: string | null = rows[0]?.ip_address
+      ? rows[0].ip_address.replace(/^::ffff:/, '').trim()
+      : null;
+    const roomNumber: string | null = rows[0]?.room_number ?? null;
+    const vlanId: number | null = rows[0]?.vlan_id ?? null;
+
+    // Update DB and emit socket event immediately — don't wait for MikroTik
     await pool.query(
       'UPDATE sessions SET is_active = FALSE, disconnected_at = NOW() WHERE id = ?',
       [req.params.id]
     );
+
+    // Emit immediately so portal and admin update right away
     io.emit('session:disconnected', { sessionId: Number(req.params.id) });
     res.json({ message: 'Session disconnected' });
-  } catch {
+
+    console.log(`[Disconnect] Session #${req.params.id} — IP: ${sessionIp || 'none'}, Room: ${roomNumber || 'none'}`);
+
+    // Run MikroTik calls in parallel after responding — don't block the HTTP response
+    const mikrotikTasks: Promise<any>[] = [];
+    if (sessionIp) {
+      // Remove + both flushes in parallel
+      mikrotikTasks.push(
+        mikrotikRemoveGuestByIp(sessionIp)
+          .then(() => mikrotikFlushConntrack(sessionIp))
+      );
+    } else {
+      console.log(`[Disconnect] No IP stored for session #${req.params.id} — skipping MikroTik removal`);
+    }
+    if (roomNumber && vlanId) {
+      mikrotikTasks.push(mikrotikReleasePortVlan(roomNumber, vlanId, Number(req.params.id)));
+    }
+    // Always remove throttle queue on disconnect
+    mikrotikTasks.push(mikrotikRemoveThrottleQueue(Number(req.params.id)));
+    // Fire and forget — errors are logged inside each function
+    Promise.all(mikrotikTasks).catch(err =>
+      console.error(`[Disconnect] MikroTik error for session #${req.params.id}:`, err)
+    );
+  } catch (err) {
+    console.error(`[Disconnect] Error for session #${req.params.id}:`, err);
     res.status(500).json({ error: 'Failed to disconnect session' });
+  }
+});
+
+// POST /api/sessions/:id/throttle — manually throttle or unthrottle a session
+router.post('/:id/throttle', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  const sessionId = Number(req.params.id);
+  const throttle: boolean = req.body?.throttle ?? true;
+  try {
+    const [rows] = await pool.query<any[]>(
+      `SELECT s.ip_address, vap.bandwidth_limit_mbps
+       FROM sessions s LEFT JOIN vaps vap ON s.vap_id = vap.id
+       WHERE s.id = ? AND s.is_active = TRUE`,
+      [sessionId]
+    );
+    if (!rows[0]) { res.status(404).json({ error: 'Session not found' }); return; }
+
+    const ip: string | null = rows[0]?.ip_address?.replace(/^::ffff:/, '').trim() ?? null;
+    const limitMbps: number = rows[0]?.bandwidth_limit_mbps ?? 2;
+
+    if (ip) {
+      if (throttle) {
+        await mikrotikRemoveThrottleQueue(sessionId);
+        await mikrotikCreateThrottleQueue(sessionId, ip, limitMbps);
+      } else {
+        await mikrotikRemoveThrottleQueue(sessionId);
+      }
+    }
+
+    await pool.query('UPDATE sessions SET is_throttled = ? WHERE id = ?', [throttle, sessionId]);
+    io.emit('session:throttle', { sessionId, is_throttled: throttle, manual: true });
+    res.json({ ok: true, sessionId, throttled: throttle, ip, limitMbps });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

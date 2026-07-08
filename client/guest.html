@@ -3,420 +3,430 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hotel WiFi — Connect</title>
+  <title>Hotel WiFi - Guest Portal</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --primary: #2563eb;
-      --primary-dark: #1d4ed8;
-      --success: #16a34a;
-      --danger: #dc2626;
-      --warning: #d97706;
-      --bg: #f0f9ff;
-      --surface: #ffffff;
-      --border: #e2e8f0;
-      --text: #1e293b;
-      --muted: #64748b;
-    }
-
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1e40af 0%, #2563eb 100%);
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 1rem;
     }
-
     .card {
-      background: var(--surface);
-      border-radius: 16px;
-      box-shadow: 0 20px 60px rgba(0,0,0,.3);
+      background: #fff;
+      border-radius: 20px;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.3);
       padding: 2rem;
       width: 100%;
-      max-width: 420px;
+      max-width: 400px;
     }
-
-    .hotel-logo {
-      text-align: center;
-      margin-bottom: 1.5rem;
+    .icon-box {
+      width: 64px; height: 64px;
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 1rem;
     }
-    .hotel-logo .icon { font-size: 3rem; display: block; }
-    .hotel-logo h1 { font-size: 1.4rem; color: var(--text); margin-top: .5rem; }
-    .hotel-logo p { color: var(--muted); font-size: .875rem; margin-top: .25rem; }
-
-    .screen { display: none; }
-    .screen.active { display: block; }
-
-    .form-group { margin-bottom: 1rem; }
-    .form-group label { display: block; font-size: .875rem; font-weight: 600; margin-bottom: .375rem; color: var(--text); }
-    .form-group input {
-      width: 100%;
-      padding: .75rem 1rem;
-      border: 2px solid var(--border);
-      border-radius: 10px;
-      font-size: 1rem;
-      outline: none;
-      transition: border-color .15s;
-      text-transform: uppercase;
-      letter-spacing: .05em;
+    .icon-blue { background: #2563eb; }
+    .icon-green { background: #16a34a; }
+    .icon-red { background: #dc2626; }
+    .icon-orange { background: #ea580c; }
+    .icon-gray { background: #e2e8f0; }
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 0.25rem; text-align: center; }
+    .subtitle { color: #64748b; font-size: 0.875rem; text-align: center; margin-bottom: 1.5rem; }
+    label { display: block; font-size: 0.75rem; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.375rem; }
+    input {
+      width: 100%; padding: 0.75rem 1rem;
+      border: 2px solid #e2e8f0; border-radius: 12px;
+      font-size: 1rem; outline: none;
+      transition: border-color 0.15s;
+      margin-bottom: 1rem;
     }
-    .form-group input:focus { border-color: var(--primary); }
-
+    input:focus { border-color: #2563eb; }
+    #codeInput { text-align: center; font-family: monospace; font-size: 1.1rem; letter-spacing: 0.1em; text-transform: uppercase; }
     .btn {
-      width: 100%;
-      padding: .875rem;
-      border: none;
-      border-radius: 10px;
-      font-size: 1rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity .15s, transform .1s;
+      width: 100%; padding: 0.875rem;
+      border: none; border-radius: 12px;
+      font-size: 1rem; font-weight: 600;
+      cursor: pointer; color: #fff;
+      background: #2563eb;
+      transition: background 0.15s;
     }
-    .btn:active { transform: scale(.98); }
-    .btn-primary { background: var(--primary); color: #fff; }
-    .btn-primary:hover { background: var(--primary-dark); }
-    .btn-success { background: var(--success); color: #fff; }
-    .btn-outline { background: transparent; border: 2px solid var(--border); color: var(--text); margin-top: .75rem; }
-
+    .btn:hover { background: #1d4ed8; }
+    .btn-outline {
+      background: transparent; color: #2563eb;
+      border: 2px solid #2563eb; margin-top: 0.75rem;
+    }
     .error-box {
-      background: #fee2e2;
-      color: var(--danger);
-      border-radius: 8px;
-      padding: .75rem 1rem;
-      font-size: .875rem;
-      margin-top: .75rem;
-      display: none;
+      background: #fee2e2; color: #dc2626;
+      border-radius: 8px; padding: 0.75rem;
+      font-size: 0.875rem; margin-bottom: 1rem;
+      display: none; text-align: center;
     }
-
-    /* Connected screen */
-    .connected-header {
-      text-align: center;
-      padding: 1rem 0;
-    }
-    .connected-icon { font-size: 4rem; display: block; }
-    .connected-header h2 { font-size: 1.5rem; color: var(--success); margin-top: .5rem; }
-    .connected-header p { color: var(--muted); margin-top: .25rem; }
-
     .info-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: .75rem;
-      margin: 1.25rem 0;
+      background: #f8fafc; border-radius: 12px;
+      padding: 1rem; margin: 1rem 0;
     }
-    .info-item {
-      background: #f8fafc;
-      border-radius: 10px;
-      padding: .875rem;
-      text-align: center;
+    .info-row {
+      display: flex; justify-content: space-between;
+      padding: 0.375rem 0; font-size: 0.875rem;
+      border-bottom: 1px solid #e2e8f0;
     }
-    .info-item .label { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
-    .info-item .value { font-size: 1.1rem; font-weight: 700; color: var(--text); margin-top: .25rem; }
-
-    .isolation-badge {
-      display: flex;
-      align-items: center;
-      gap: .5rem;
-      background: #f0fdf4;
-      border: 1px solid #bbf7d0;
-      border-radius: 8px;
-      padding: .75rem 1rem;
-      font-size: .875rem;
-      color: var(--success);
-      margin-bottom: 1rem;
-    }
-
-    .throttle-warning {
-      display: none;
-      align-items: center;
-      gap: .5rem;
-      background: #fef3c7;
-      border: 1px solid #fde68a;
-      border-radius: 8px;
-      padding: .75rem 1rem;
-      font-size: .875rem;
-      color: var(--warning);
-      margin-bottom: 1rem;
-    }
-
-    .timer { font-size: 1.5rem; font-weight: 700; color: var(--primary); }
-
-    /* Loading spinner */
-    .spinner {
-      display: inline-block;
-      width: 18px; height: 18px;
-      border: 2px solid rgba(255,255,255,.4);
-      border-top-color: #fff;
-      border-radius: 50%;
-      animation: spin .6s linear infinite;
-      vertical-align: middle;
-      margin-right: .5rem;
-    }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: #64748b; }
+    .info-value { font-weight: 600; color: #1e293b; }
+    .timer { color: #2563eb; font-size: 1.1rem; }
+    .page { display: none; }
+    .page.active { display: block; }
+    .spin { animation: spin 0.7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .hint { color: #94a3b8; font-size: 0.75rem; text-align: center; margin-top: 1rem; }
+
+    /* Info tiles for connected page */
+    .info-tile {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 0.75rem 1rem;
+    }
+    .tile-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: #94a3b8;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 0.3rem;
+    }
+    .tile-value {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .btn-disconnect {
+      background: transparent;
+      color: #475569;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 12px;
+      padding: 0.75rem;
+      font-size: 0.95rem;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+    }
+    .btn-disconnect:hover {
+      background: #f1f5f9;
+      color: #dc2626;
+      border-color: #dc2626;
+    }
   </style>
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-<div class="card">
-  <div class="hotel-logo">
-    <span class="icon">🏨</span>
-    <h1>Hotel WiFi</h1>
-    <p id="portal-subtitle">Enter your voucher code to connect</p>
-  </div>
 
-  <!-- Connect Screen -->
-  <div id="screen-connect" class="screen active">
-    <form id="connect-form">
-      <div class="form-group">
-        <label for="voucher-code">Voucher Code</label>
-        <input type="text" id="voucher-code" placeholder="e.g. A3BX9KPQ2T" maxlength="20" required autocomplete="off" />
-      </div>
-      <div class="form-group">
-        <label for="device-name">Your Name (optional)</label>
-        <input type="text" id="device-name" placeholder="e.g. John's Phone" style="text-transform:none;letter-spacing:normal" />
-      </div>
-      <button type="submit" class="btn btn-primary" id="connect-btn">Connect to WiFi</button>
-      <div class="error-box" id="connect-error"></div>
+  <!-- Enter Code Page -->
+  <div id="page-code" class="card page active">
+    <div class="icon-box icon-blue">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="white">
+        <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z"/>
+      </svg>
+    </div>
+    <h1 style="color:#1e293b">Hotel WiFi</h1>
+    <p class="subtitle">Enter your voucher code to connect</p>
+    <form id="voucherForm">
+      <label>Voucher Code</label>
+      <input id="codeInput" type="text" placeholder="E.G. A3BX9KPQ2T" maxlength="20" autocomplete="off" autocapitalize="characters" />
+      <label>Your Name (optional)</label>
+      <input id="nameInput" type="text" placeholder="e.g. John's Phone" style="text-transform:none;letter-spacing:normal" />
+      <div id="errorMsg" class="error-box"></div>
+      <button type="submit" class="btn">Connect to WiFi</button>
     </form>
+    <p class="hint">Need a code? Ask the front desk.</p>
   </div>
 
-  <!-- Connected Screen -->
-  <div id="screen-connected" class="screen">
-    <div class="connected-header">
-      <span class="connected-icon">✅</span>
-      <h2>You're Connected!</h2>
-      <p id="connected-subtitle">Welcome to Hotel WiFi</p>
+  <!-- Connecting Page -->
+  <div id="page-connecting" class="card page" style="text-align:center">
+    <div class="icon-box icon-gray" style="margin-bottom:1rem">
+      <svg class="spin" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="3">
+        <circle cx="12" cy="12" r="10" stroke-opacity="0.2"/>
+        <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+      </svg>
     </div>
-
-    <div class="isolation-badge">
-      🔒 Your connection is private — other guests cannot see your device
-    </div>
-
-    <div class="throttle-warning" id="throttle-warning">
-      ⚠️ Your connection has been throttled due to high usage
-    </div>
-
-    <div class="info-grid">
-      <div class="info-item">
-        <div class="label">Room</div>
-        <div class="value" id="info-room">—</div>
-      </div>
-      <div class="info-item">
-        <div class="label">Time Left</div>
-        <div class="value timer" id="info-timer">—</div>
-      </div>
-      <div class="info-item" style="grid-column:span 2">
-        <div class="label">Device</div>
-        <div class="value" id="info-device" style="font-size:.95rem">—</div>
-      </div>
-    </div>
-
-    <button class="btn btn-outline" id="disconnect-btn">Disconnect</button>
+    <h1 style="color:#334155">Connecting...</h1>
+    <p class="subtitle" style="margin-bottom:0">Please wait a moment</p>
   </div>
 
-  <!-- Disconnected Screen -->
-  <div id="screen-disconnected" class="screen">
-    <div class="connected-header">
-      <span class="connected-icon">👋</span>
-      <h2>Disconnected</h2>
-      <p>Your session has ended. Thank you for staying!</p>
+  <!-- Connected Page -->
+  <div id="page-connected" class="card page">
+    <!-- Hotel branding header -->
+    <div style="text-align:center; margin-bottom:1.25rem;">
+      <div style="font-size:3rem; line-height:1; margin-bottom:0.5rem;">🏨</div>
+      <h1 style="color:#1e293b; font-size:1.4rem; margin-bottom:0.2rem;">Hotel WiFi</h1>
+      <p id="conn-subtitle-top" class="subtitle" style="margin-bottom:0; font-style:italic;">Welcome — Enjoy your stay!</p>
     </div>
-    <button class="btn btn-primary" onclick="location.reload()" style="margin-top:1.5rem">Connect Again</button>
+
+    <!-- Big green checkmark -->
+    <div style="text-align:center; margin-bottom:0.75rem;">
+      <div style="
+        width:72px; height:72px; border-radius:16px;
+        background:#16a34a; display:inline-flex;
+        align-items:center; justify-content:center;
+        box-shadow:0 4px 16px rgba(22,163,74,0.35);
+      ">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="white">
+          <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        </svg>
+      </div>
+      <div style="color:#16a34a; font-size:1.4rem; font-weight:700; font-style:italic; margin-top:0.6rem;">You're Connected!</div>
+      <div id="conn-room-heading" style="color:#475569; font-size:0.9rem; font-style:italic; margin-top:0.2rem;"></div>
+    </div>
+
+    <!-- Privacy notice -->
+    <div style="
+      background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px;
+      padding:0.6rem 0.9rem; margin-bottom:1rem;
+      color:#166534; font-size:0.8rem; display:flex; align-items:flex-start; gap:0.4rem;
+    ">
+      <span>🔒</span>
+      <span>Your connection is private — other guests cannot see your device</span>
+    </div>
+
+    <!-- 2×2 info grid -->
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:0.75rem;">
+      <div class="info-tile" id="tile-room" style="display:none">
+        <div class="tile-label">ROOM</div>
+        <div class="tile-value" id="info-room"></div>
+      </div>
+      <div class="info-tile" id="tile-vap" style="display:none">
+        <div class="tile-label">VAP / VLAN</div>
+        <div class="tile-value" id="info-vap"></div>
+      </div>
+      <div class="info-tile" id="tile-timer" style="display:none">
+        <div class="tile-label">TIME LEFT</div>
+        <div class="tile-value" id="countdown" style="color:#ea580c;"></div>
+      </div>
+      <div class="info-tile" id="tile-ip" style="display:none">
+        <div class="tile-label">YOUR IP</div>
+        <div class="tile-value" id="info-ip"></div>
+      </div>
+    </div>
+
+    <!-- Device (full width) -->
+    <div class="info-tile" id="tile-device" style="display:none; margin-bottom:1rem; text-align:center;">
+      <div class="tile-label">DEVICE</div>
+      <div class="tile-value" id="info-device" style="font-style:italic;"></div>
+    </div>
+
+    <!-- Disconnect button -->
+    <button class="btn btn-disconnect" id="disconnectBtn">Disconnect</button>
   </div>
-</div>
 
-<script src="/socket.io/socket.io.js"></script>
-<script>
-  // Auto-detect server URL
-  const SERVER = window.location.origin;
-  let sessionId = null;
-  let expiresAt = null;
-  let timerInterval = null;
-  let savedCode = null;
+  <!-- Expired Page -->
+  <div id="page-expired" class="card page" style="text-align:center">
+    <div class="icon-box icon-orange">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="white">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm.5 5H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/>
+      </svg>
+    </div>
+    <h1 style="color:#ea580c">Session Expired</h1>
+    <p class="subtitle">Your voucher has expired. Ask the front desk for a new one.</p>
+    <button class="btn" onclick="showPage('page-code')">Try Another Code</button>
+  </div>
 
-  // Pre-fill code from ?code= URL parameter (QR code scan) and auto-submit
-  const urlParams = new URLSearchParams(window.location.search);
-  const urlCode = urlParams.get('code');
-  if (urlCode) {
-    document.getElementById('voucher-code').value = urlCode.toUpperCase();
-    document.getElementById('portal-subtitle').textContent = 'QR code detected — connecting automatically…';
-    // Auto-connect after short delay so user sees the code being filled in
-    setTimeout(() => {
-      document.getElementById('connect-btn').click();
-    }, 800);
-  }
+  <!-- Error Page -->
+  <div id="page-error" class="card page" style="text-align:center">
+    <div class="icon-box icon-red">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="white">
+        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+      </svg>
+    </div>
+    <h1 style="color:#dc2626">Connection Failed</h1>
+    <p class="subtitle" id="errorDetail">Something went wrong.</p>
+    <button class="btn" onclick="showPage('page-code')">Try Again</button>
+  </div>
 
-  // Check if we have a saved session
-  const savedSession = localStorage.getItem('wifi_session');
-  if (savedSession) {
-    try {
-      const s = JSON.parse(savedSession);
-      // Try to reconnect with saved code
-      if (s.code && s.sessionId) {
-        savedCode = s.code;
-        document.getElementById('voucher-code').value = s.code;
-        document.getElementById('device-name').value = s.deviceName || '';
-        // Auto-reconnect
-        setTimeout(() => reconnectSaved(s), 500);
-      }
-    } catch(e) { localStorage.removeItem('wifi_session'); }
-  }
+  <script>
+    var API = location.origin + '/api';
+    var countdownTimer = null;
+    var currentSessionId = null;
 
-  async function reconnectSaved(s) {
-    const btn = document.getElementById('connect-btn');
-    const errEl = document.getElementById('connect-error');
-    btn.innerHTML = '<span class="spinner"></span>Reconnecting...';
-    btn.disabled = true;
-    try {
-      const res = await fetch(`${SERVER}/api/vouchers/${s.code}/activate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_name: s.deviceName }),
+    // ── Socket.IO — listen for server-side disconnect events ──────────────────
+    // Fetch the correct Socket.IO URL from the server (handles port 8080 vs 3001)
+    fetch(API + '/socket-config').then(function(r) { return r.json(); }).then(function(config) {
+      var socketUrl = config.socketUrl || (location.protocol + '//' + location.hostname + ':3001');
+      var socket = io(socketUrl, {
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 2000,
       });
-      const data = await res.json();
-      if (!res.ok) {
-        localStorage.removeItem('wifi_session');
-        btn.innerHTML = 'Connect to WiFi';
-        btn.disabled = false;
-        return;
+
+      function registerListeners() {
+        socket.on('session:disconnected', function(data) {
+          if (currentSessionId && data.sessionId === currentSessionId) {
+            if (countdownTimer) clearInterval(countdownTimer);
+            currentSessionId = null;
+            showPage('page-expired');
+            var h1 = document.querySelector('#page-expired h1');
+            var sub = document.querySelector('#page-expired .subtitle');
+            if (h1) h1.textContent = 'Disconnected';
+            if (sub) sub.textContent = 'Your session was ended. Scan or enter a new code to reconnect.';
+          }
+        });
       }
-      sessionId = data.sessionId;
-      expiresAt = data.expires_at ? new Date(data.expires_at) : null;
-      showConnected(data);
-    } catch {
-      btn.innerHTML = 'Connect to WiFi';
-      btn.disabled = false;
-    }
-  }
 
-  function showConnected(data) {
-    document.getElementById('connected-subtitle').textContent =
-      data.room_number ? `Room ${data.room_number} — Enjoy your stay!` : 'Enjoy your stay!';
-    document.getElementById('info-room').textContent = data.room_number || '—';
-    document.getElementById('info-device').textContent = data.device_name || '—';
-    startTimer();
-    showScreen('screen-connected');
-  }
-
-  const socket = io(SERVER);
-
-  // Listen for real-time throttle events
-  socket.on('session:throttled', (data) => {
-    if (data.sessionId === sessionId) {
-      document.getElementById('throttle-warning').style.display = 'flex';
-    }
-  });
-  socket.on('session:unthrottled', (data) => {
-    if (data.sessionId === sessionId) {
-      document.getElementById('throttle-warning').style.display = 'none';
-    }
-  });
-  // New throttle event from bandwidth job
-  socket.on('session:throttle', (data) => {
-    if (data.sessionId === sessionId) {
-      document.getElementById('throttle-warning').style.display = data.is_throttled ? 'flex' : 'none';
-    }
-  });
-  socket.on('session:disconnected', (data) => {
-    if (data.sessionId === sessionId) {
-      showScreen('screen-disconnected');
-      clearInterval(timerInterval);
-    }
-  });
-  socket.on('session:expired', (data) => {
-    if (data.sessionId === sessionId) {
-      localStorage.removeItem('wifi_session');
-      document.querySelector('#screen-disconnected h2').textContent = 'Session Expired';
-      document.querySelector('#screen-disconnected p').textContent = 'Your WiFi time has run out. Please get a new voucher at reception.';
-      showScreen('screen-disconnected');
-      clearInterval(timerInterval);
-    }
-  });
-
-  // Connect form
-  document.getElementById('connect-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const code = document.getElementById('voucher-code').value.trim().toUpperCase();
-    const deviceName = document.getElementById('device-name').value.trim() || null;
-    const btn = document.getElementById('connect-btn');
-    const errEl = document.getElementById('connect-error');
-
-    errEl.style.display = 'none';
-    btn.innerHTML = '<span class="spinner"></span>Connecting...';
-    btn.disabled = true;
-
-    try {
-      const res = await fetch(`${SERVER}/api/vouchers/${code}/activate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_name: deviceName }),
+      registerListeners();
+      // Re-register after reconnect in case listeners were lost
+      socket.on('reconnect', function() {
+        socket.off('session:disconnected');
+        registerListeners();
       });
-      const data = await res.json();
-
-      if (!res.ok) {
-        errEl.textContent = data.error || 'Connection failed';
-        errEl.style.display = 'block';
-        btn.innerHTML = 'Connect to WiFi';
-        btn.disabled = false;
-        return;
-      }
-
-      sessionId = data.sessionId;
-      expiresAt = data.expires_at ? new Date(data.expires_at) : null;
-
-      // Save session to localStorage for reconnect on refresh
-      localStorage.setItem('wifi_session', JSON.stringify({
-        code, sessionId: data.sessionId, deviceName: deviceName
-      }));
-
-      showConnected(data);
-    } catch {
-      errEl.textContent = 'Cannot reach server. Check your connection.';
-      errEl.style.display = 'block';
-      btn.innerHTML = 'Connect to WiFi';
-      btn.disabled = false;
-    }
-  });
-
-  // Disconnect
-  document.getElementById('disconnect-btn').addEventListener('click', async () => {
-    if (!sessionId) return;
-    await fetch(`${SERVER}/api/sessions/${sessionId}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer guest' },
+    }).catch(function(e) {
+      console.warn('Socket.IO setup failed:', e);
     });
-    localStorage.removeItem('wifi_session');
-    clearInterval(timerInterval);
-    showScreen('screen-disconnected');
-  });
 
-  function showScreen(id) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-  }
-
-  function startTimer() {
-    updateTimer();
-    timerInterval = setInterval(updateTimer, 1000);
-  }
-
-  function updateTimer() {
-    if (!expiresAt) { document.getElementById('info-timer').textContent = '∞'; return; }
-    const diff = expiresAt - new Date();
-    if (diff <= 0) {
-      document.getElementById('info-timer').textContent = 'Expired';
-      clearInterval(timerInterval);
-      showScreen('screen-disconnected');
-      return;
+    function showPage(id) {
+      document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+      document.getElementById(id).classList.add('active');
     }
-    const h = Math.floor(diff / 3600000);
-    const m = Math.floor((diff % 3600000) / 60000);
-    const s = Math.floor((diff % 60000) / 1000);
-    document.getElementById('info-timer').textContent =
-      `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-  }
 
-</script>
+    var params = new URLSearchParams(location.search);
+    var qrCode = params.get('code') ? params.get('code').toUpperCase() : null;
+
+    if (qrCode) {
+      // Pre-fill the input in case the user navigates back
+      document.getElementById('codeInput').value = qrCode;
+      // Check voucher status first — don't auto-connect if it was deactivated
+      fetch(API + '/vouchers/check/' + qrCode)
+        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, status: r.status, d: d }; }); })
+        .then(function(res) {
+          if (!res.ok) {
+            // Voucher inactive, expired or not found — show code entry page with message
+            if (res.status === 410) {
+              document.getElementById('errorMsg').textContent = 'This voucher has expired. Ask the front desk for a new one.';
+            } else if (res.status === 404) {
+              document.getElementById('errorMsg').textContent = 'Voucher not found or has been deactivated.';
+            } else {
+              document.getElementById('errorMsg').textContent = res.d.error || 'Voucher is not valid.';
+            }
+            document.getElementById('errorMsg').style.display = 'block';
+            showPage('page-code');
+          } else {
+            // Voucher valid — auto connect
+            document.querySelector('#page-connecting h1').textContent = 'Connecting...';
+            document.querySelector('#page-connecting .subtitle').textContent = 'QR code detected — connecting automatically';
+            showPage('page-connecting');
+            activateVoucher(qrCode, null);
+          }
+        })
+        .catch(function() {
+          // Can't reach server — show form so user can try manually
+          showPage('page-code');
+        });
+    }
+
+    function activateVoucher(code, deviceName) {
+      fetch(API + '/vouchers/' + code + '/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ device_name: deviceName || null })
+      }).then(function(r) {
+        return r.json().then(function(d) { return { ok: r.ok, d: d }; });
+      }).then(function(res) {
+        if (!res.ok) {
+          document.getElementById('errorDetail').textContent = res.d.error || 'Failed to activate voucher';
+          showPage('page-error');
+        } else {
+          populateConnected(res.d);
+          showPage('page-connected');
+        }
+      }).catch(function() {
+        document.getElementById('errorDetail').textContent = 'Cannot reach server. Try again.';
+        showPage('page-error');
+      });
+    }
+
+    document.getElementById('voucherForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      var code = document.getElementById('codeInput').value.trim().toUpperCase();
+      var name = document.getElementById('nameInput').value.trim();
+      var errEl = document.getElementById('errorMsg');
+      errEl.style.display = 'none';
+      if (!code) { errEl.textContent = 'Please enter your voucher code'; errEl.style.display = 'block'; return; }
+      // Reset connecting page subtitle for manual entry flow
+      document.querySelector('#page-connecting .subtitle').textContent = 'Please wait a moment';
+      showPage('page-connecting');
+      activateVoucher(code, name || null);
+    });
+
+    function populateConnected(d) {
+      currentSessionId = d.sessionId;
+
+      // Top subtitle — different message for QR vs manual
+      if (d.room_number) {
+        document.getElementById('conn-room-heading').textContent = 'Room ' + d.room_number + ' — Enjoy your stay!';
+        document.getElementById('conn-subtitle-top').style.display = 'none';
+      }
+      // Show QR detection notice in header if came from QR scan
+      if (qrCode) {
+        document.getElementById('conn-subtitle-top').textContent = 'QR code detected — connecting automatically';
+        document.getElementById('conn-subtitle-top').style.display = 'block';
+      }
+
+      // Tiles
+      if (d.room_number) {
+        document.getElementById('info-room').textContent = d.room_number;
+        document.getElementById('tile-room').style.display = 'block';
+      }
+      if (d.vap_label || d.vap_id) {
+        document.getElementById('info-vap').textContent = d.vap_label || ('VAP-' + d.vap_id);
+        document.getElementById('tile-vap').style.display = 'block';
+      }
+      if (d.ip_address) {
+        document.getElementById('info-ip').textContent = d.ip_address;
+        document.getElementById('tile-ip').style.display = 'block';
+      }
+      if (d.device_name) {
+        document.getElementById('info-device').textContent = d.device_name;
+        document.getElementById('tile-device').style.display = 'block';
+      }
+      if (d.expires_at) {
+        document.getElementById('tile-timer').style.display = 'block';
+        startCountdown(new Date(d.expires_at));
+      }
+    }
+
+    // Disconnect button
+    document.getElementById('disconnectBtn').addEventListener('click', function() {
+      if (!currentSessionId) { showPage('page-code'); return; }
+      fetch(API + '/sessions/' + currentSessionId, {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer guest' }
+      }).finally(function() {
+        if (countdownTimer) clearInterval(countdownTimer);
+        showPage('page-code');
+      });
+    });
+
+    function startCountdown(expires) {
+      if (countdownTimer) clearInterval(countdownTimer);
+      function update() {
+        var el = document.getElementById('countdown');
+        if (!el) { clearInterval(countdownTimer); return; }
+        var diff = Math.max(0, expires - Date.now());
+        if (diff === 0) { clearInterval(countdownTimer); showPage('page-expired'); return; }
+        var h = Math.floor(diff / 3600000);
+        var m = Math.floor((diff % 3600000) / 60000);
+        var s = Math.floor((diff % 60000) / 1000);
+        // Always show HH:MM:SS format like in the screenshot
+        el.textContent =
+          String(h).padStart(2, '0') + ':' +
+          String(m).padStart(2, '0') + ':' +
+          String(s).padStart(2, '0');
+      }
+      update();
+      countdownTimer = setInterval(update, 1000);
+    }
+  </script>
 </body>
 </html>
