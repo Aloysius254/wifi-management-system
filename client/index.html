@@ -234,6 +234,10 @@ function LoginScreen({ onLogin }) {
           {err && <p className="text-red-600 text-sm">{err}</p>}
           <Btn type="submit" disabled={busy} color="blue" size="lg">{busy ? 'Signing in…' : 'Sign In'}</Btn>
         </form>
+        <div className="mt-4 rounded-lg border border-yellow-400 bg-yellow-50 p-3 text-center">
+          <p className="font-semibold text-yellow-800">⚠️ SYSTEM IS BEING MONITORED</p>
+          <p className="mt-1 text-sm text-yellow-700">Authorised Administrators Only.</p>
+        </div>
       </div>
     </div>
   );
