@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { nanoid } from 'nanoid';
+import { UAParser } from 'ua-parser-js';
 import pool from '../db';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { io } from '../index';
@@ -93,38 +94,19 @@ function randomMac(): string {
   }).join(':');
 }
 
-// Detect device model from User-Agent string
+// Detect device model from User-Agent string using UAParser
 function detectDevice(ua: string): string {
   if (!ua) return 'Unknown Device';
-  if (/iPhone/.test(ua)) {
-    const m = ua.match(/iPhone OS ([\d_]+)/);
-    return `iPhone (iOS ${m ? m[1].replace(/_/g, '.') : ''})`;
-  }
-  if (/iPad/.test(ua)) return 'iPad';
-  // Samsung — extract model number
-  const samsungModel = ua.match(/SM-([A-Z0-9]+)/i);
-  if (samsungModel) return `Samsung SM-${samsungModel[1]}`;
-  if (/Samsung/i.test(ua)) return 'Samsung Galaxy';
-  // Other Android brands
-  if (/Xiaomi|Redmi/i.test(ua)) return 'Xiaomi Device';
-  if (/HUAWEI|Huawei/i.test(ua)) return 'Huawei Device';
-  if (/Tecno/i.test(ua)) return 'Tecno Device';
-  if (/Infinix/i.test(ua)) return 'Infinix Device';
-  if (/itel/i.test(ua)) return 'Itel Device';
-  if (/OPPO/i.test(ua)) return 'OPPO Device';
-  if (/vivo/i.test(ua)) return 'Vivo Device';
-  if (/Nokia/i.test(ua)) return 'Nokia Device';
-  // Generic Android — show brand from UA if available
-  const androidBuild = ua.match(/;\s*([A-Za-z0-9_\- ]+)\s+Build\//);
-  if (androidBuild) return androidBuild[1].trim();
-  if (/Android/.test(ua)) {
-    const ver = ua.match(/Android\s([\d.]+)/);
-    return `Android ${ver ? ver[1] : 'Device'}`;
-  }
-  if (/Windows Phone/.test(ua)) return 'Windows Phone';
-  if (/Windows/.test(ua)) return 'Windows PC';
-  if (/Macintosh/.test(ua)) return 'Mac';
-  if (/Linux/.test(ua)) return 'Linux Device';
+  const parser = new UAParser(ua);
+  const result = parser.getResult();
+  const deviceVendor = result.device.vendor || '';
+  const deviceModel  = result.device.model  || '';
+  const osName       = result.os.name        || '';
+  const osVersion    = result.os.version     || '';
+
+  if (deviceVendor && deviceModel) return `${deviceVendor} ${deviceModel}`;
+  if (deviceModel)                 return deviceModel;
+  if (osName)                      return osVersion ? `${osName} ${osVersion}` : osName;
   return 'Unknown Device';
 }
 
@@ -132,6 +114,25 @@ function detectDevice(ua: string): string {
 router.post('/:code/activate', async (req: Request, res: Response): Promise<void> => {
   const { device_name, ip_address } = req.body;
   const userAgent = req.headers['user-agent'] || '';
+  const parser = new UAParser(userAgent);
+  const result = parser.getResult();
+  const deviceType           = result.device.type    || 'desktop';
+  const browser              = result.browser.name   || 'Unknown';
+  const browserVersion       = result.browser.version || '';
+  const operatingSystem      = result.os.name        || 'Unknown';
+  const operatingSystemVersion = result.os.version   || '';
+  const deviceModel          = result.device.model   || '';
+  const deviceVendor         = result.device.vendor  || '';
+
+  let device = '💻 Desktop';
+  switch (deviceType) {
+    case 'mobile':    device = '📱 Mobile';       break;
+    case 'tablet':    device = '📟 Tablet';        break;
+    case 'smarttv':   device = '📺 Smart TV';      break;
+    case 'console':   device = '🎮 Game Console';  break;
+    case 'wearable':  device = '⌚ Wearable';       break;
+    default:          device = '💻 Desktop';
+  }
 
   // Normalize the client IP — strip IPv6-mapped prefix (::ffff:192.168.x.x → 192.168.x.x)
   function normalizeIp(raw: string | undefined): string | null {

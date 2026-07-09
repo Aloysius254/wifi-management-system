@@ -17,6 +17,7 @@ x<!DOCTYPE html>
   <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ua-parser-js@1.0.40/src/ua-parser.min.js"></script>
   <style>
     [data-loading]::before {
       content: '';
@@ -234,6 +235,10 @@ function LoginScreen({ onLogin }) {
           {err && <p className="text-red-600 text-sm">{err}</p>}
           <Btn type="submit" disabled={busy} color="blue" size="lg">{busy ? 'Signing in…' : 'Sign In'}</Btn>
         </form>
+        <div className="mt-4 rounded-lg border border-yellow-400 bg-yellow-50 p-3 text-center">
+          <p className="font-semibold text-yellow-800">⚠️ SYSTEM IS BEING MONITORED</p>
+          <p className="mt-1 text-sm text-yellow-700">Authorised Administrators Only.</p>
+        </div>
       </div>
     </div>
   );
@@ -295,10 +300,43 @@ function OverviewTab({ token, events, reloadSignal, onNavigate }) {
 
 // ── Live Sessions Tab ─────────────────────────────────────────────────────────
 
+// Parse a raw user-agent string into { deviceIcon, deviceLabel, os, browser }
+function parseUA(ua) {
+  if (!ua) return { deviceIcon: '💻', deviceLabel: 'Desktop', os: 'Unknown', browser: 'Unknown' };
+  const parser = new UAParser(ua);
+  const result = parser.getResult();
+
+  const deviceType = result.device.type || 'desktop';
+  let deviceIcon = '💻', deviceLabel = 'Desktop';
+  switch (deviceType) {
+    case 'mobile':   deviceIcon = '📱'; deviceLabel = 'Mobile';       break;
+    case 'tablet':   deviceIcon = '📟'; deviceLabel = 'Tablet';        break;
+    case 'smarttv':  deviceIcon = '📺'; deviceLabel = 'Smart TV';      break;
+    case 'console':  deviceIcon = '🎮'; deviceLabel = 'Game Console';  break;
+    case 'wearable': deviceIcon = '⌚'; deviceLabel = 'Wearable';       break;
+    default:         deviceIcon = '💻'; deviceLabel = 'Desktop';
+  }
+
+  const osName    = result.os.name      || '';
+  const osVer     = result.os.version   || '';
+  const brName    = result.browser.name    || 'Unknown';
+  const brVer     = result.browser.version || '';
+  // Show only the major version number
+  const brMajor   = brVer ? brVer.split('.')[0] : '';
+
+  return {
+    deviceIcon,
+    deviceLabel,
+    os:      osName ? (osVer ? `${osName} ${osVer}` : osName) : 'Unknown',
+    browser: brMajor ? `${brName} ${brMajor}` : brName,
+  };
+}
+
 function SessionsTab({ token, reloadSignal }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [queues, setQueues] = useState({});
+  const [expanded, setExpanded] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -307,7 +345,6 @@ function SessionsTab({ token, reloadSignal }) {
       fetch(location.origin + '/api/mikrotik/queues').then(r => r.json()).catch(() => []),
     ]);
     if (sr.ok) setSessions(await sr.json());
-    // Build a map of sessionId → queue info
     const qMap = {};
     for (const q of qr) {
       const match = q.name && q.name.match(/hotel-session-(\d+)/);
@@ -336,53 +373,127 @@ function SessionsTab({ token, reloadSignal }) {
     else { const d = await r.json().catch(() => ({})); alert('Throttle failed: ' + (d.error || r.status)); }
   }
 
+  function toggleExpand(id) {
+    setExpanded(p => ({ ...p, [id]: !p[id] }));
+  }
+
   return (
     <div>
-      <PageHeader title="Live Sessions">
+      <PageHeader title="Active Sessions" live>
         <RefreshBtn onClick={load} loading={loading} />
       </PageHeader>
-      <Tbl head={['#ID','Room','VAP/VLAN','Device','MAC','IP','Connected','Bandwidth','Status','Actions']}>
-        {sessions.length === 0
-          ? <Tr><Td className="text-center py-10 text-slate-400" colSpan={10}>No active sessions</Td></Tr>
-          : sessions.map(s => {
-            const queue = queues[String(s.id)];
-            const queueInfo = (() => {
-              if (!queue || !queue['max-limit']) return null;
-              const raw = queue['max-limit'].split('/')[0];
-              // RouterOS returns bits/sec as a plain number string e.g. "10000000"
-              const bps = Number(raw);
-              if (!isNaN(bps) && bps > 0) {
-                const mbps = bps / 1_000_000;
-                return `Cap: ${mbps % 1 === 0 ? mbps : mbps.toFixed(1)} Mbps`;
-              }
-              // Already formatted e.g. "10M"
-              return `Cap: ${raw}`;
-            })();
-            return (
-            <Tr key={s.id}>
-              <Td><b className="text-blue-600">#{s.id}</b></Td>
-              <Td><b>{s.room_number || '—'}</b></Td>
-              <Td>{s.vap_id ? <Badge color="blue">VAP-{s.vap_id} / VLAN-{s.vlan_id || '?'}</Badge> : <Badge color="yellow">No VAP</Badge>}</Td>
-              <Td className="max-w-[140px] truncate" title={s.device_name}>{s.device_name || '—'}</Td>
-              <Td><code className="text-xs bg-slate-100 px-1 rounded">{s.device_mac || '—'}</code></Td>
-              <Td><code className="text-xs bg-slate-100 px-1 rounded">{s.ip_address || '—'}</code></Td>
-              <Td className="text-xs text-slate-400 whitespace-nowrap">{new Date(s.connected_at).toLocaleTimeString()}</Td>
-              <Td id={`bw-${s.id}`}>
-                {Number(s.avg_usage_mbps) > 0 ? <b>{Number(s.avg_usage_mbps).toFixed(2)} Mbps</b> : '—'}
-                {queueInfo && <div className="text-xs text-orange-500">{queueInfo}</div>}
-              </Td>
-              <Td id={`badge-${s.id}`}><Badge color={s.is_throttled ? 'red' : 'green'}>{s.is_throttled ? '⚡ Throttled' : '✅ Normal'}</Badge></Td>
-              <Td className="flex gap-1 flex-wrap items-center">
-                <Btn size="sm" color={s.is_throttled ? 'gray' : 'yellow'} onClick={() => toggleThrottle(s.id, s.is_throttled)}>
-                  {s.is_throttled ? '↑ Unlimit' : '⚡ Throttle'}
-                </Btn>
-                <Btn size="sm" color="red" onClick={() => disconnect(s.id)}>Disconnect</Btn>
-              </Td>
-            </Tr>
-            );
-          })
-        }
-      </Tbl>
+
+      <div className="bg-white rounded-lg shadow-sm overflow-x-auto mb-4">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr>
+              {['Guest', 'Device', 'Operating System', 'Browser', 'IP Address', 'Status', ''].map((h, i) => (
+                <th key={i} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide bg-slate-50 whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sessions.length === 0 ? (
+              <tr><td colSpan={7} className="text-center py-12 text-slate-400">No active sessions</td></tr>
+            ) : sessions.map(s => {
+              const ua   = parseUA(s.user_agent);
+              const queue = queues[String(s.id)];
+              const queueInfo = (() => {
+                if (!queue || !queue['max-limit']) return null;
+                const raw = queue['max-limit'].split('/')[0];
+                const bps = Number(raw);
+                if (!isNaN(bps) && bps > 0) {
+                  const mbps = bps / 1_000_000;
+                  return `Cap: ${mbps % 1 === 0 ? mbps : mbps.toFixed(1)} Mbps`;
+                }
+                return `Cap: ${raw}`;
+              })();
+              const isOpen = expanded[s.id];
+
+              return (
+                <React.Fragment key={s.id}>
+                  <tr className="hover:bg-slate-50/70 transition-colors border-t border-slate-100">
+                    {/* Guest / Room */}
+                    <td className="px-4 py-3 font-semibold whitespace-nowrap">
+                      Room {s.room_number || '—'}
+                      <div className="text-xs font-normal text-slate-400">#{s.id} · {new Date(s.connected_at).toLocaleTimeString()}</div>
+                    </td>
+
+                    {/* Device */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="text-lg mr-1">{ua.deviceIcon}</span>
+                      <span className="font-medium">{ua.deviceLabel}</span>
+                    </td>
+
+                    {/* OS */}
+                    <td className="px-4 py-3 whitespace-nowrap">{ua.os}</td>
+
+                    {/* Browser */}
+                    <td className="px-4 py-3 whitespace-nowrap">{ua.browser}</td>
+
+                    {/* IP */}
+                    <td className="px-4 py-3">
+                      <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">{s.ip_address || '—'}</code>
+                    </td>
+
+                    {/* Status */}
+                    <td className="px-4 py-3 whitespace-nowrap" id={`badge-${s.id}`}>
+                      {s.is_throttled
+                        ? <span className="inline-flex items-center gap-1 text-orange-600 font-medium">🟠 Throttled</span>
+                        : <span className="inline-flex items-center gap-1 text-green-600 font-medium">🟢 Online</span>
+                      }
+                      {Number(s.avg_usage_mbps) > 0 && (
+                        <div className="text-xs text-slate-400 mt-0.5" id={`bw-${s.id}`}>{Number(s.avg_usage_mbps).toFixed(2)} Mbps</div>
+                      )}
+                      {queueInfo && <div className="text-xs text-orange-500">{queueInfo}</div>}
+                    </td>
+
+                    {/* Expand toggle */}
+                    <td className="px-4 py-3">
+                      <button onClick={() => toggleExpand(s.id)}
+                        className="text-slate-400 hover:text-slate-700 text-xs border border-slate-200 rounded px-2 py-0.5 transition-colors">
+                        {isOpen ? '▲ Less' : '▼ More'}
+                      </button>
+                    </td>
+                  </tr>
+
+                  {/* Expanded detail row */}
+                  {isOpen && (
+                    <tr className="bg-slate-50 border-t border-slate-100">
+                      <td colSpan={7} className="px-4 py-3">
+                        <div className="flex flex-wrap gap-6 text-sm">
+                          <div>
+                            <span className="text-xs text-slate-500 uppercase tracking-wide block mb-0.5">MAC Address</span>
+                            <code className="text-xs bg-white border border-slate-200 px-1.5 py-0.5 rounded">{s.device_mac || '—'}</code>
+                          </div>
+                          <div>
+                            <span className="text-xs text-slate-500 uppercase tracking-wide block mb-0.5">VAP / VLAN</span>
+                            {s.vap_id ? <Badge color="blue">VAP-{s.vap_id} / VLAN-{s.vlan_id || '?'}</Badge> : <Badge color="yellow">No VAP</Badge>}
+                          </div>
+                          <div>
+                            <span className="text-xs text-slate-500 uppercase tracking-wide block mb-0.5">Device Name</span>
+                            <span>{s.device_name || '—'}</span>
+                          </div>
+                          <div>
+                            <span className="text-xs text-slate-500 uppercase tracking-wide block mb-0.5">User Agent</span>
+                            <span className="text-xs text-slate-400 max-w-xs block truncate" title={s.user_agent}>{s.user_agent || '—'}</span>
+                          </div>
+                          <div className="flex gap-2 items-center ml-auto">
+                            <Btn size="sm" color={s.is_throttled ? 'gray' : 'yellow'} onClick={() => toggleThrottle(s.id, s.is_throttled)}>
+                              {s.is_throttled ? '↑ Unlimit' : '⚡ Throttle'}
+                            </Btn>
+                            <Btn size="sm" color="red" onClick={() => disconnect(s.id)}>Disconnect</Btn>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
