@@ -6,7 +6,7 @@ import { io } from '../index';
 import { sendVoucherSMS } from '../sms';
 import { logAction } from '../audit';
 import { checkRate, clearRate } from '../rateLimit';
-import { mikrotikAllowGuest, mikrotikRemoveGuestByIp, mikrotikAssignPortVlan, mikrotikReleasePortVlan } from '../mikrotik';
+import { mikrotikAllowGuest, mikrotikRemoveGuestByIp, mikrotikAssignPortVlan, mikrotikReleasePortVlan, mikrotikFlushConntrack } from '../mikrotik';
 
 const router = Router();
 
@@ -106,7 +106,7 @@ function detectDevice(ua: string): string {
   if (samsungModel) return `Samsung SM-${samsungModel[1]}`;
   if (/Samsung/i.test(ua)) return 'Samsung Galaxy';
   // Other Android brands
-  if (/Xiaomi|Redmi/i.test(ua)) return 'Xiaomi Device';
+  if (/Xiaomi|Redmi|MIUI/i.test(ua)) return 'Xiaomi/Redmi Device';
   if (/HUAWEI|Huawei/i.test(ua)) return 'Huawei Device';
   if (/Tecno/i.test(ua)) return 'Tecno Device';
   if (/Infinix/i.test(ua)) return 'Infinix Device';
@@ -114,6 +114,10 @@ function detectDevice(ua: string): string {
   if (/OPPO/i.test(ua)) return 'OPPO Device';
   if (/vivo/i.test(ua)) return 'Vivo Device';
   if (/Nokia/i.test(ua)) return 'Nokia Device';
+  if (/realme/i.test(ua)) return 'Realme Device';
+  if (/OnePlus/i.test(ua)) return 'OnePlus Device';
+  // Xiaomi hostname format: digits + letters (e.g. 2409BRN2CA, 23049PCD8G)
+  if (/^\d{4}[A-Z0-9]{4,}$/i.test(ua.trim())) return 'Xiaomi/Redmi Device';
   // Generic Android — show brand from UA if available
   const androidBuild = ua.match(/;\s*([A-Za-z0-9_\- ]+)\s+Build\//);
   if (androidBuild) return androidBuild[1].trim();
@@ -132,6 +136,12 @@ function detectDevice(ua: string): string {
 router.post('/:code/activate', async (req: Request, res: Response): Promise<void> => {
   const { device_name, ip_address } = req.body;
   const userAgent = req.headers['user-agent'] || '';
+
+  // Sanitize device_name — if it looks like a raw hostname/model code
+  // (no spaces, pure alphanumeric, e.g. "2409BRN2CA") treat it as unset
+  // and fall back to UA detection instead.
+  const isRawHostname = device_name && /^[A-Z0-9]{6,}$/i.test(device_name.trim()) && !/\s/.test(device_name);
+  const cleanDeviceName = isRawHostname ? null : (device_name || null);
 
   // Normalize the client IP — strip IPv6-mapped prefix (::ffff:192.168.x.x → 192.168.x.x)
   function normalizeIp(raw: string | undefined): string | null {
@@ -153,7 +163,7 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
     return;
   }
   // Auto-detect device model if user didn't provide a name
-  const detectedDevice = device_name || detectDevice(userAgent);
+  const detectedDevice = cleanDeviceName || detectDevice(userAgent);
 
   try {
     const [rows] = await pool.query<any[]>(
@@ -202,13 +212,18 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
     );
 
     if (existingRows[0]) {
-      // Same device reconnecting — return existing session
+      // Same device reconnecting with same IP — restore MikroTik access immediately.
+      // The conntrack table may have stale entries from the previous connection that
+      // block traffic even though the IP is still in allowed_guests. Flush them and
+      // re-add the IP to reset the timeout, so internet works instantly on reconnect.
       const existing = existingRows[0];
       let reconnectVapLabel: string | null = null;
       if (existing.vap_id) {
         const [vapInfo] = await pool.query<any[]>('SELECT vlan_id FROM vaps WHERE id = ?', [existing.vap_id]);
         if (vapInfo[0]) reconnectVapLabel = `VAP-${vapInfo[0].vlan_id}`;
       }
+
+      // Respond immediately so the guest portal shows "connected" without waiting
       res.status(200).json({
         sessionId: existing.id,
         message: 'Reconnected successfully',
@@ -221,6 +236,17 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
         ip_address: clientIp,
         reconnected: true,
       });
+
+      // Fire MikroTik refresh after responding — don't block the HTTP response
+      if (clientIp) {
+        const remainingMs = voucher.expires_at ? new Date(voucher.expires_at).getTime() - Date.now() : 0;
+        const remainingHours = Math.max(1, Math.ceil(remainingMs / 3600000));
+        // Re-add IP (removes stale entry first, resets timeout) and flush conntrack in parallel
+        Promise.all([
+          mikrotikAllowGuest(clientIp, existing.id, voucher.room_number ?? 'unknown', remainingHours),
+          mikrotikFlushConntrack(clientIp),
+        ]).catch(err => console.error(`[Reconnect] MikroTik refresh failed for session #${existing.id}:`, err));
+      }
       return;
     }
 

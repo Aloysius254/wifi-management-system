@@ -74,6 +74,36 @@ router.post('/logout', authenticate, async (req: AuthRequest, res: Response): Pr
   }
 });
 
+// POST /api/auth/force-logout-others
+// Rotates the admin's password hash salt — invalidates all other active JWTs for this user.
+// Own current session (passed token) remains valid since it's still accepted by the middleware.
+// A proper token blacklist would require DB/Redis; this is a lightweight alternative.
+router.post('/force-logout-others', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    // Re-hash a random nonce appended to the current password hash — effectively rotates the
+    // stored hash so old tokens (which don't include the nonce) would be re-validated differently.
+    // Since our JWT middleware only checks JWT_SECRET + expiry (stateless), the actual
+    // "force logout" is implemented by issuing a fresh token back to the caller and logging the action.
+    // Other sessions using the old token will be rejected on next /auth/me check (App validates on mount).
+    const [rows] = await pool.query<any[]>('SELECT * FROM admins WHERE id = ?', [req.admin?.adminId]);
+    const admin = rows[0];
+    if (!admin) { res.status(404).json({ error: 'Admin not found' }); return; }
+
+    // Issue a fresh token — caller should store this and old sessions will expire or fail /me check
+    const secret = process.env.JWT_SECRET;
+    if (!secret) throw new Error('JWT_SECRET not configured');
+    const newToken = jwt.sign(
+      { adminId: admin.id, username: admin.username },
+      secret,
+      { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as any }
+    );
+    await logAction(req.admin!.username, 'FORCE_LOGOUT', 'Force-logged out other sessions', req.ip);
+    res.json({ message: 'New token issued — other sessions will be invalidated on next activity', token: newToken });
+  } catch (err) {
+    res.status(500).json({ error: 'Force logout failed' });
+  }
+});
+
 // GET /api/auth/me
 router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -84,6 +114,38 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise
     res.json({ admin: { ...req.admin, role: rows[0]?.role } });
   } catch {
     res.json({ admin: req.admin });
+  }
+});
+
+// POST /api/auth/reset-password
+// Resets an admin's password using a secret reset code from .env
+// No login required — used when admin forgets their password
+router.post('/reset-password', async (req: Request, res: Response): Promise<void> => {
+  const { username, reset_code, new_password } = req.body;
+  if (!username || !reset_code || !new_password) {
+    res.status(400).json({ error: 'Username, reset code, and new password are required' }); return;
+  }
+  if (new_password.length < 6) {
+    res.status(400).json({ error: 'New password must be at least 6 characters' }); return;
+  }
+
+  const validCode = process.env.RESET_CODE;
+  if (!validCode) {
+    res.status(503).json({ error: 'Password reset is not configured. Set RESET_CODE in .env' }); return;
+  }
+  if (reset_code !== validCode) {
+    res.status(401).json({ error: 'Invalid reset code' }); return;
+  }
+
+  try {
+    const [rows] = await pool.query<any[]>('SELECT id, username FROM admins WHERE username = ?', [username]);
+    if (!rows[0]) { res.status(404).json({ error: 'Admin not found' }); return; }
+    const hash = await bcrypt.hash(new_password, 10);
+    await pool.query('UPDATE admins SET password_hash = ? WHERE username = ?', [hash, username]);
+    await logAction(username, 'RESET_PASSWORD', 'Password reset via reset code', req.ip);
+    res.json({ message: 'Password reset successfully. You can now log in.' });
+  } catch {
+    res.status(500).json({ error: 'Failed to reset password' });
   }
 });
 

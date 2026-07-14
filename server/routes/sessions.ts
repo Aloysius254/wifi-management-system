@@ -166,11 +166,9 @@ router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
     // Run MikroTik calls in parallel after responding — don't block the HTTP response
     const mikrotikTasks: Promise<any>[] = [];
     if (sessionIp) {
-      // Remove + both flushes in parallel
-      mikrotikTasks.push(
-        mikrotikRemoveGuestByIp(sessionIp)
-          .then(() => mikrotikFlushConntrack(sessionIp))
-      );
+      // Remove from address-list and flush conntrack in parallel — fastest cutoff
+      mikrotikTasks.push(mikrotikRemoveGuestByIp(sessionIp));
+      mikrotikTasks.push(mikrotikFlushConntrack(sessionIp));
     } else {
       console.log(`[Disconnect] No IP stored for session #${req.params.id} — skipping MikroTik removal`);
     }

@@ -1,4 +1,4 @@
-x<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
@@ -164,6 +164,21 @@ function RefreshBtn({ onClick, loading }) {
   );
 }
 
+// ── Date/time formatters (d/m/yyyy) ──────────────────────────────────────────
+const DATE_LOCALE = 'en-GB'; // ensures d/m/yyyy ordering
+function fmtTime(d) {
+  return new Date(d).toLocaleTimeString(DATE_LOCALE, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+function fmtDate(d) {
+  return new Date(d).toLocaleDateString(DATE_LOCALE, { day: 'numeric', month: 'numeric', year: 'numeric' });
+}
+function fmtDateTime(d) {
+  return new Date(d).toLocaleString(DATE_LOCALE, { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+function fmtDayGroup(d) {
+  return new Date(d).toLocaleDateString(DATE_LOCALE, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 // ── Data size formatter ───────────────────────────────────────────────────────
 // Converts a GB value to a human-readable string: MB if < 1 GB, else GB.
 function fmtBytes(gb) {
@@ -193,6 +208,17 @@ function LoginScreen({ onLogin }) {
   const [busy, setBusy] = useState(false);
   const [showPass, setShowPass] = useState(false);
 
+  // Reset password state
+  const [showReset,     setShowReset]     = useState(false);
+  const [resetUser,     setResetUser]     = useState('');
+  const [resetCode,     setResetCode]     = useState('');
+  const [resetNew,      setResetNew]      = useState('');
+  const [resetMsg,      setResetMsg]      = useState('');
+  const [resetErr,      setResetErr]      = useState('');
+  const [resetBusy,     setResetBusy]     = useState(false);
+  const [showResetCode, setShowResetCode] = useState(false);
+  const [showResetNew,  setShowResetNew]  = useState(false);
+
   async function submit(e) {
     e.preventDefault(); setErr(''); setBusy(true);
     try {
@@ -207,6 +233,71 @@ function LoginScreen({ onLogin }) {
     } catch { setErr('Cannot reach server'); }
     finally { setBusy(false); }
   }
+
+  async function submitReset(e) {
+    e.preventDefault(); setResetErr(''); setResetMsg(''); setResetBusy(true);
+    try {
+      const r = await fetch(API + '/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: resetUser, reset_code: resetCode, new_password: resetNew }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setResetErr(d.error || 'Reset failed'); return; }
+      setResetMsg(d.message);
+      setTimeout(() => { setShowReset(false); setUser(resetUser); setResetUser(''); setResetCode(''); setResetNew(''); setResetMsg(''); }, 2000);
+    } catch { setResetErr('Cannot reach server'); }
+    finally { setResetBusy(false); }
+  }
+
+  if (showReset) return (
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-lg p-10 w-full max-w-sm">
+        <h1 className="text-2xl font-bold mb-1">🔑 Reset Password</h1>
+        <p className="text-slate-500 text-sm mb-6">Enter your username and the reset code from your server's .env file</p>
+        <form onSubmit={submitReset} className="space-y-3">
+          <Field label="Username"><Input value={resetUser} onChange={e => setResetUser(e.target.value)} required /></Field>
+          <Field label="Reset Code">
+            <div className="relative">
+              <input
+                type={showResetCode ? 'text' : 'password'}
+                value={resetCode}
+                onChange={e => setResetCode(e.target.value)}
+                placeholder="From RESET_CODE in .env"
+                required
+                className="border border-slate-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500 w-full pr-10"
+              />
+              <button type="button" onClick={() => setShowResetCode(p => !p)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs">
+                {showResetCode ? '🙈 Hide' : '👁 Show'}
+              </button>
+            </div>
+          </Field>
+          <Field label="New Password">
+            <div className="relative">
+              <input
+                type={showResetNew ? 'text' : 'password'}
+                value={resetNew}
+                onChange={e => setResetNew(e.target.value)}
+                placeholder="Min 6 characters"
+                required
+                minLength={6}
+                className="border border-slate-200 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-blue-500 w-full pr-10"
+              />
+              <button type="button" onClick={() => setShowResetNew(p => !p)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs">
+                {showResetNew ? '🙈 Hide' : '👁 Show'}
+              </button>
+            </div>
+          </Field>
+          {resetErr && <p className="text-red-600 text-sm">{resetErr}</p>}
+          {resetMsg && <p className="text-green-600 text-sm font-medium">{resetMsg}</p>}
+          <Btn type="submit" disabled={resetBusy} color="blue" size="lg">{resetBusy ? 'Resetting…' : 'Reset Password'}</Btn>
+          <button type="button" onClick={() => { setShowReset(false); setResetErr(''); setResetMsg(''); }} className="w-full text-sm text-slate-500 hover:text-slate-700 mt-1">← Back to Login</button>
+        </form>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
@@ -234,6 +325,11 @@ function LoginScreen({ onLogin }) {
           {err && <p className="text-red-600 text-sm">{err}</p>}
           <Btn type="submit" disabled={busy} color="blue" size="lg">{busy ? 'Signing in…' : 'Sign In'}</Btn>
         </form>
+        <button
+          type="button"
+          onClick={() => { setShowReset(true); setResetUser(user); setErr(''); }}
+          className="w-full text-sm text-slate-400 hover:text-blue-600 mt-4 text-center"
+        >Forgot password?</button>
       </div>
     </div>
   );
@@ -256,7 +352,7 @@ function OverviewTab({ token, events, reloadSignal, onNavigate }) {
       rooms:    rooms.length,
       devices:  sessions.length,
       throttled:sessions.filter(s => s.is_throttled).length,
-      vouchers: vouchers.filter(v => v.is_active && !v.is_used).length,
+      vouchers: vouchers.filter(v => v.code !== 'SYSTEM_BYPASS' && v.is_active && !v.is_used).length,
       isolated: vaps.filter(v => v.is_isolated).length,
       blocked:  iso.length,
     });
@@ -295,7 +391,7 @@ function OverviewTab({ token, events, reloadSignal, onNavigate }) {
 
 // ── Live Sessions Tab ─────────────────────────────────────────────────────────
 
-function SessionsTab({ token, reloadSignal }) {
+function SessionsTab({ token, reloadSignal, liveBandwidth = {} }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [queues, setQueues] = useState({});
@@ -358,6 +454,9 @@ function SessionsTab({ token, reloadSignal }) {
               // Already formatted e.g. "10M"
               return `Cap: ${raw}`;
             })();
+            const live = liveBandwidth[s.id];
+            const avgMbps = live ? live.avg_mbps : s.avg_usage_mbps;
+            const isThrottled = live ? live.is_throttled : s.is_throttled;
             return (
             <Tr key={s.id}>
               <Td><b className="text-blue-600">#{s.id}</b></Td>
@@ -366,15 +465,15 @@ function SessionsTab({ token, reloadSignal }) {
               <Td className="max-w-[140px] truncate" title={s.device_name}>{s.device_name || '—'}</Td>
               <Td><code className="text-xs bg-slate-100 px-1 rounded">{s.device_mac || '—'}</code></Td>
               <Td><code className="text-xs bg-slate-100 px-1 rounded">{s.ip_address || '—'}</code></Td>
-              <Td className="text-xs text-slate-400 whitespace-nowrap">{new Date(s.connected_at).toLocaleTimeString()}</Td>
-              <Td id={`bw-${s.id}`}>
-                {Number(s.avg_usage_mbps) > 0 ? <b>{Number(s.avg_usage_mbps).toFixed(2)} Mbps</b> : '—'}
+              <Td className="text-xs text-slate-400 whitespace-nowrap">{fmtTime(s.connected_at)}</Td>
+              <Td>
+                {Number(avgMbps) > 0 ? <b>{Number(avgMbps).toFixed(2)} Mbps</b> : '—'}
                 {queueInfo && <div className="text-xs text-orange-500">{queueInfo}</div>}
               </Td>
-              <Td id={`badge-${s.id}`}><Badge color={s.is_throttled ? 'red' : 'green'}>{s.is_throttled ? '⚡ Throttled' : '✅ Normal'}</Badge></Td>
+              <Td><Badge color={isThrottled ? 'red' : 'green'}>{isThrottled ? '⚡ Throttled' : '✅ Normal'}</Badge></Td>
               <Td className="flex gap-1 flex-wrap items-center">
-                <Btn size="sm" color={s.is_throttled ? 'gray' : 'yellow'} onClick={() => toggleThrottle(s.id, s.is_throttled)}>
-                  {s.is_throttled ? '↑ Unlimit' : '⚡ Throttle'}
+                <Btn size="sm" color={isThrottled ? 'gray' : 'yellow'} onClick={() => toggleThrottle(s.id, s.is_throttled)}>
+                  {isThrottled ? '↑ Unlimit' : '⚡ Throttle'}
                 </Btn>
                 <Btn size="sm" color="red" onClick={() => disconnect(s.id)}>Disconnect</Btn>
               </Td>
@@ -409,7 +508,7 @@ function HistoryTab({ token }) {
 
   // Group rows by date (e.g. "Mon, 3 Jun 2026")
   const grouped = filtered.reduce((acc, s) => {
-    const day = new Date(s.connected_at).toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+    const day = fmtDayGroup(s.connected_at);
     if (!acc[day]) acc[day] = [];
     acc[day].push(s);
     return acc;
@@ -423,8 +522,8 @@ function HistoryTab({ token }) {
     const headers = ['Room','Device','MAC Address','IP','Connected','Disconnected','Status'];
     const lines = filtered.map(s => [
       s.room_number || '', s.device_name || '', s.device_mac || '', s.ip_address || '',
-      new Date(s.connected_at).toLocaleString(),
-      s.disconnected_at ? new Date(s.disconnected_at).toLocaleString() : '',
+      new Date(s.connected_at).toLocaleString(DATE_LOCALE),
+      s.disconnected_at ? new Date(s.disconnected_at).toLocaleString(DATE_LOCALE) : '',
       s.is_active ? 'Active' : 'Ended',
     ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
     downloadCSV([headers.join(','), ...lines].join('\n'), 'session_history.csv');
@@ -469,8 +568,8 @@ function HistoryTab({ token }) {
                     <Td>{s.device_name || '—'}</Td>
                     <Td><code className="text-xs">{s.device_mac || '—'}</code></Td>
                     <Td><code className="text-xs">{s.ip_address || '—'}</code></Td>
-                    <Td className="text-xs text-slate-400">{new Date(s.connected_at).toLocaleTimeString()}</Td>
-                    <Td className="text-xs text-slate-400">{s.disconnected_at ? new Date(s.disconnected_at).toLocaleTimeString() : '—'}</Td>
+                    <Td className="text-xs text-slate-400">{fmtTime(s.connected_at)}</Td>
+                    <Td className="text-xs text-slate-400">{s.disconnected_at ? fmtTime(s.disconnected_at) : '—'}</Td>
                     <Td><Badge color={s.is_active ? 'green' : 'gray'}>{s.is_active ? 'Active' : 'Ended'}</Badge></Td>
                   </Tr>
                 ))}
@@ -601,7 +700,7 @@ function VAPsTab({ token }) {
         const cutoff = isoFilterDays === 'all' ? null : new Date(Date.now() - parseInt(isoFilterDays) * 86400000);
         const filtered = cutoff ? isoEvts.filter(e => new Date(e.occurred_at) >= cutoff) : isoEvts;
         const grouped = filtered.reduce((acc, e) => {
-          const day = new Date(e.occurred_at).toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+          const day = fmtDayGroup(e.occurred_at);
           if (!acc[day]) acc[day] = [];
           acc[day].push(e);
           return acc;
@@ -618,7 +717,7 @@ function VAPsTab({ token }) {
               <Tbl head={['Time','Source Room','Target Room','Action','Reason']}>
                 {evts.map((e) => (
                   <Tr key={e.id}>
-                    <Td className="text-xs text-slate-400 whitespace-nowrap">{new Date(e.occurred_at).toLocaleTimeString()}</Td>
+                    <Td className="text-xs text-slate-400 whitespace-nowrap">{fmtTime(e.occurred_at)}</Td>
                     <Td>Room {e.source_room || '—'} <code className="text-xs text-slate-400 ml-1">{e.source_ip || ''}</code></Td>
                     <Td>Room {e.target_room || '—'} <code className="text-xs text-slate-400 ml-1">{e.target_ip || ''}</code></Td>
                     <Td><Badge color="red">{e.action}</Badge></Td>
@@ -744,7 +843,7 @@ function VouchersTab({ token }) {
       const exp = v.expires_at && new Date(v.expires_at) < new Date();
       const label = !v.is_active ? 'Inactive' : exp ? 'Expired' : v.is_used ? 'In Use' : 'Available';
       return [v.code, v.room_number||'', v.ssid||'', v.duration_hours, v.max_devices, label,
-        v.expires_at ? new Date(v.expires_at).toLocaleString() : '',
+        v.expires_at ? fmtDateTime(v.expires_at) : '',
       ].map(val => `"${String(val).replace(/"/g,'""')}"`).join(',');
     });
     downloadCSV([headers.join(','), ...lines].join('\n'), 'vouchers.csv');
@@ -752,6 +851,7 @@ function VouchersTab({ token }) {
 
   // Filter vouchers by search, room, and status
   const filteredVouchers = vouchers.filter(v => {
+    if (v.code === 'SYSTEM_BYPASS') return false; // internal bypass voucher — hide from UI
     const exp = v.expires_at && new Date(v.expires_at) < new Date();
     const status = !v.is_active ? 'inactive' : exp ? 'expired' : v.is_used ? 'inuse' : 'available';
     const matchSearch = !search || v.code.toLowerCase().includes(search.toLowerCase());
@@ -837,7 +937,7 @@ function VouchersTab({ token }) {
                 <Td>{v.duration_hours}h</Td>
                 <Td>{v.active_devices ?? 0} / {v.max_devices}</Td>
                 <Td><Badge color={color}>{label}</Badge></Td>
-                <Td className="text-xs text-slate-400">{v.expires_at ? new Date(v.expires_at).toLocaleString() : '—'}</Td>
+                <Td className="text-xs text-slate-400">{v.expires_at ? fmtDateTime(v.expires_at) : '—'}</Td>
                 <Td className="flex gap-2 flex-wrap items-center">
                   {v.is_active && <Btn size="sm" color="green" onClick={() => extendVoucher(v.id, v.expires_at)}>+Time</Btn>}
                   {v.is_active && <Btn size="sm" color="red" onClick={() => deactivate(v.id)}>Deactivate</Btn>}
@@ -1043,24 +1143,57 @@ function TopologyTab({ token }) {
 
 // ── Analytics Tab ─────────────────────────────────────────────────────────────
 
+// ── Analytics stat card with colored icon box ────────────────────────────────
+function AStatCard({ icon, value, label, iconBg, loading }) {
+  if (loading) return (
+    <div className="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3 animate-pulse">
+      <div className="w-12 h-12 rounded-xl bg-slate-200 flex-shrink-0" />
+      <div className="flex-1">
+        <div className="h-6 bg-slate-200 rounded w-16 mb-1" />
+        <div className="h-3 bg-slate-100 rounded w-24" />
+      </div>
+    </div>
+  );
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3 hover:shadow-md transition-shadow cursor-default">
+      <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0 ${iconBg}`}>
+        {icon}
+      </div>
+      <div>
+        <div className="text-2xl font-bold text-slate-800 leading-tight">{value ?? '—'}</div>
+        <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+      </div>
+    </div>
+  );
+}
+
 function AnalyticsTab({ token }) {
   const [summary,    setSummary]    = useState(null);
   const [sessions,   setSessions]   = useState([]);
   const [selSession, setSelSession] = useState('');
   const [bwHistory,  setBwHistory]  = useState([]);
   const [days,       setDays]       = useState('7');
-  const barRef  = useRef(null);
-  const lineRef = useRef(null);
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState(null);
+  const barRef    = useRef(null);
+  const lineRef   = useRef(null);
   const barChart  = useRef(null);
   const lineChart = useRef(null);
 
   const load = useCallback(async () => {
-    const [sr, sesr] = await Promise.all([
-      api(token, `/analytics/summary?days=${days}`).then(r => r.json()),
-      api(token, '/sessions/history').then(r => r.json()),
-    ]);
-    setSummary(sr);
-    setSessions(sesr);
+    setLoading(true);
+    setError(null);
+    try {
+      const [sr, sesr] = await Promise.all([
+        api(token, `/analytics/summary?days=${days}`).then(r => r.ok ? r.json() : null).catch(() => null),
+        api(token, '/sessions/history').then(r => r.ok ? r.json() : []).catch(() => []),
+      ]);
+      if (sr === null) { setError('Could not load analytics data. The server may be unavailable.'); }
+      else { setSummary(sr); }
+      if (Array.isArray(sesr)) setSessions(sesr);
+    } finally {
+      setLoading(false);
+    }
   }, [token, days]);
 
   useEffect(() => { load(); }, [load]);
@@ -1073,58 +1206,88 @@ function AnalyticsTab({ token }) {
     };
   }, []);
 
-  // Build/update bar chart when summary changes
+  // Build/update bar chart — sorted, gradient bars, top room highlighted
   useEffect(() => {
     if (!summary || !barRef.current) return;
-    const rooms  = summary.rooms || [];
-    if (rooms.length === 0) return;
-    const labels = rooms.map(r => `Rm ${r.room_number}`);
-    const data   = rooms.map(r => parseFloat(r.total_gb) || 0);
+    const raw = (summary.rooms || []).map(r => ({ label: `Rm ${r.room_number}`, val: parseFloat(r.total_gb) || 0 }));
+    if (raw.length === 0) return;
+    const sorted = [...raw].sort((a, b) => b.val - a.val);
+    const maxVal = sorted[0]?.val || 1;
+
     if (barChart.current) barChart.current.destroy();
+
+    const ctx = barRef.current.getContext('2d');
+    // Gradient for normal bars
+    const grad = ctx.createLinearGradient(0, 0, 0, 300);
+    grad.addColorStop(0,   'rgba(37,99,235,0.85)');
+    grad.addColorStop(1,   'rgba(37,99,235,0.25)');
+    // Gradient for top-usage bar (orange/fire)
+    const gradTop = ctx.createLinearGradient(0, 0, 0, 300);
+    gradTop.addColorStop(0, 'rgba(234,88,12,0.95)');
+    gradTop.addColorStop(1, 'rgba(234,88,12,0.35)');
+
     barChart.current = new Chart(barRef.current, {
       type: 'bar',
       data: {
-        labels,
+        labels: sorted.map(r => r.label),
         datasets: [{
           label: 'Data Used',
-          data,
-          backgroundColor: 'rgba(37,99,235,0.7)',
-          borderColor:     'rgba(37,99,235,1)',
+          data:  sorted.map(r => r.val),
+          backgroundColor: sorted.map((r, i) => i === 0 ? gradTop : grad),
+          borderColor:     sorted.map((r, i) => i === 0 ? 'rgba(234,88,12,1)' : 'rgba(37,99,235,0.9)'),
           borderWidth: 1,
-          borderRadius: 4,
+          borderRadius: 6,
         }],
       },
       options: {
         responsive: true,
+        animation: { duration: 600, easing: 'easeOutQuart' },
         plugins: {
           legend: { display: false },
           tooltip: {
+            backgroundColor: '#1e293b',
+            titleColor: '#94a3b8',
+            bodyColor: '#f1f5f9',
+            cornerRadius: 8,
+            padding: 10,
             callbacks: {
-              label: ctx => fmtBytes(ctx.parsed.y),
+              label: ctx => {
+                const isTop = ctx.dataIndex === 0;
+                return `${isTop ? '🔥 Top room — ' : ''}${fmtBytes(ctx.parsed.y)}`;
+              },
             },
           },
         },
         scales: {
           y: {
             beginAtZero: true,
-            title: { display: true, text: 'Usage' },
-            ticks: { callback: val => fmtBytes(val) },
+            grid: { color: 'rgba(148,163,184,0.15)' },
+            ticks: { color: '#94a3b8', callback: val => fmtBytes(val) },
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: '#64748b' },
           },
         },
       },
     });
   }, [summary]);
 
-  // Build/update line chart when bwHistory changes
+  // Build/update line chart — gradient fill, hover-only dots
   useEffect(() => {
     if (!bwHistory.length || !lineRef.current) return;
-    const labels = bwHistory.map(b => {
-      const d = new Date(b.logged_at);
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    });
+    const labels = bwHistory.map(b => fmtTime(b.logged_at));
     const data      = bwHistory.map(b => parseFloat(b.usage_mbps));
-    const threshold = 8; // default; could pull from VAP data
+    const threshold = 8;
+
     if (lineChart.current) lineChart.current.destroy();
+
+    const ctx2 = lineRef.current.getContext('2d');
+    const areaGrad = ctx2.createLinearGradient(0, 0, 0, 280);
+    areaGrad.addColorStop(0,   'rgba(37,99,235,0.35)');
+    areaGrad.addColorStop(0.7, 'rgba(37,99,235,0.08)');
+    areaGrad.addColorStop(1,   'rgba(37,99,235,0)');
+
     lineChart.current = new Chart(lineRef.current, {
       type: 'line',
       data: {
@@ -1134,27 +1297,51 @@ function AnalyticsTab({ token }) {
             label: 'Usage (Mbps)',
             data,
             borderColor: 'rgba(37,99,235,1)',
-            backgroundColor: 'rgba(37,99,235,0.1)',
+            borderWidth: 2,
+            backgroundColor: areaGrad,
             fill: true,
-            tension: 0.35,
-            pointRadius: 3,
+            tension: 0.4,
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            pointHoverBackgroundColor: 'rgba(37,99,235,1)',
+            pointHoverBorderColor: '#fff',
+            pointHoverBorderWidth: 2,
           },
           {
             label: 'Throttle Threshold',
             data: data.map(() => threshold),
-            borderColor: 'rgba(220,38,38,0.8)',
+            borderColor: 'rgba(220,38,38,0.75)',
             borderDash: [6, 4],
+            borderWidth: 1.5,
             pointRadius: 0,
             fill: false,
+            tension: 0,
           },
         ],
       },
       options: {
         responsive: true,
-        plugins: { legend: { position: 'top' } },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'top', labels: { color: '#475569', font: { size: 12 } } },
+          tooltip: {
+            backgroundColor: '#1e293b',
+            titleColor: '#94a3b8',
+            bodyColor: '#f1f5f9',
+            cornerRadius: 8,
+            padding: 10,
+          },
+        },
         scales: {
-          y: { beginAtZero: true, title: { display: true, text: 'Mbps' } },
-          x: { title: { display: true, text: 'Time' } },
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(148,163,184,0.15)' },
+            ticks: { color: '#94a3b8', callback: v => `${v} Mbps` },
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: '#64748b' },
+          },
         },
       },
     });
@@ -1169,6 +1356,10 @@ function AnalyticsTab({ token }) {
   const totals = summary?.totals || {};
   const totalThrottleEvents = (summary?.rooms || []).reduce((acc, r) => acc + Number(r.throttle_events || 0), 0);
 
+  // Sort rooms for breakdown table too
+  const sortedRooms = [...(summary?.rooms || [])].sort((a, b) => (parseFloat(b.total_gb) || 0) - (parseFloat(a.total_gb) || 0));
+  const maxRoomGb = parseFloat(sortedRooms[0]?.total_gb) || 1;
+
   return (
     <div>
       <PageHeader title="Analytics">
@@ -1182,14 +1373,28 @@ function AnalyticsTab({ token }) {
           <option value="90">Last 90 days</option>
           <option value="all">All time</option>
         </select>
-        <Btn onClick={load} color="gray">↻ Refresh</Btn>
+        <Btn onClick={load} color="gray" disabled={loading}>{loading ? '↻ Loading…' : '↻ Refresh'}</Btn>
       </PageHeader>
 
+      {/* Error banner */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 flex items-center justify-between">
+          <span className="text-red-700 text-sm">⚠️ {error}</span>
+          <Btn size="sm" color="red" onClick={load}>Retry</Btn>
+        </div>
+      )}
+
+      {/* Stat cards — show skeletons while loading first time */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-        <Stat icon="📊" value={fmtBytes(totals.total_gb)} label="Total Data Used" />
-        <Stat icon="📱" value={totals.total_sessions ?? 0} label="Total Sessions" />
-        <Stat icon="🚀" value={totals.peak_mbps ? `${Number(totals.peak_mbps).toFixed(1)} Mbps` : '0 Mbps'} label="Peak Usage" />
-        <Stat icon="⚡" value={totalThrottleEvents} label="Throttle Events" />
+        <AStatCard loading={loading && !summary} icon="📊" iconBg="bg-blue-100"
+          value={fmtBytes(totals.total_gb)} label="Total Data Used" />
+        <AStatCard loading={loading && !summary} icon="📱" iconBg="bg-purple-100"
+          value={totals.total_sessions ?? 0} label="Total Sessions" />
+        <AStatCard loading={loading && !summary} icon="🚀" iconBg="bg-green-100"
+          value={totals.peak_mbps ? `${Number(totals.peak_mbps).toFixed(1)} Mbps` : '0 Mbps'} label="Peak Usage" />
+        <AStatCard loading={loading && !summary} icon="⚡"
+          iconBg={totalThrottleEvents > 0 ? 'bg-red-100' : 'bg-slate-100'}
+          value={totalThrottleEvents} label="Throttle Events" />
       </div>
 
       <Card title="Bandwidth per Room">
@@ -1202,7 +1407,7 @@ function AnalyticsTab({ token }) {
       <Card title="Session Bandwidth History">
         <div className="flex flex-wrap gap-3 items-end mb-4">
           <Field label="Select Session">
-            <Select style={{width:'260px'}} value={selSession} onChange={e => { setSelSession(e.target.value); loadBwHistory(e.target.value); }}>
+            <Select style={{width:'280px'}} value={selSession} onChange={e => { setSelSession(e.target.value); loadBwHistory(e.target.value); }}>
               <option value="">— Choose session —</option>
               {sessions.map(s => (
                 <option key={s.id} value={s.id}>#{s.id} — {s.device_name || 'Device'} (Room {s.room_number || '?'})</option>
@@ -1211,24 +1416,41 @@ function AnalyticsTab({ token }) {
           </Field>
         </div>
         {bwHistory.length === 0
-          ? <p className="text-slate-400 text-sm py-6 text-center">Select a session to view its bandwidth samples (red dashed line = throttle threshold)</p>
+          ? <p className="text-slate-400 text-sm py-6 text-center">Select a session to view its bandwidth history</p>
           : <canvas ref={lineRef} />
         }
       </Card>
 
-      {(summary?.rooms?.length ?? 0) > 0 && (
+      {sortedRooms.length > 0 && (
         <Card title="Per-Room Breakdown">
-          <Tbl head={['Room','Sessions','Total Data','Avg Mbps','Peak Mbps','Throttle Events']}>
-            {summary.rooms.map(r => (
-              <Tr key={r.room_id}>
-                <Td><b>{r.room_number}</b></Td>
-                <Td>{r.total_sessions}</Td>
-                <Td>{fmtBytes(r.total_gb)}</Td>
-                <Td>{Number(r.avg_mbps || 0).toFixed(2)} Mbps</Td>
-                <Td>{Number(r.peak_mbps || 0).toFixed(2)} Mbps</Td>
-                <Td>{r.throttle_events ?? 0}</Td>
-              </Tr>
-            ))}
+          <Tbl head={['Room','Sessions','Total Data','Usage Share','Avg Mbps','Peak Mbps','Throttle Events']}>
+            {sortedRooms.map((r, i) => {
+              const pct = Math.round(((parseFloat(r.total_gb) || 0) / maxRoomGb) * 100);
+              const isTop = i === 0;
+              return (
+                <Tr key={r.room_id}>
+                  <Td><b>{r.room_number}</b>{isTop && <span className="ml-1">🔥</span>}</Td>
+                  <Td>{r.total_sessions}</Td>
+                  <Td>{fmtBytes(r.total_gb)}</Td>
+                  <Td style={{minWidth:'120px'}}>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                        <div className="h-2 rounded-full transition-all"
+                          style={{ width: `${pct}%`, background: isTop ? '#ea580c' : '#2563eb' }} />
+                      </div>
+                      <span className="text-xs text-slate-500 w-8 text-right">{pct}%</span>
+                    </div>
+                  </Td>
+                  <Td>{Number(r.avg_mbps || 0).toFixed(2)} Mbps</Td>
+                  <Td>{Number(r.peak_mbps || 0).toFixed(2)} Mbps</Td>
+                  <Td>
+                    {Number(r.throttle_events || 0) > 0
+                      ? <Badge color="red">{r.throttle_events}</Badge>
+                      : <span className="text-slate-400">0</span>}
+                  </Td>
+                </Tr>
+              );
+            })}
           </Tbl>
         </Card>
       )}
@@ -1236,9 +1458,255 @@ function AnalyticsTab({ token }) {
   );
 }
 
+// ── MikroTik Setup & Health Card ─────────────────────────────────────────────
+
+function MikroTikHealthCard({ token }) {
+  const [status,    setStatus]    = useState(null);
+  const [loading,   setLoading]   = useState(false);
+  const [setupMsg,  setSetupMsg]  = useState(null);
+  const [setupBusy, setSetupBusy] = useState(null); // which button is busy
+
+  async function probe() {
+    setLoading(true);
+    setSetupMsg(null);
+    try {
+      const [testR, fwR] = await Promise.all([
+        fetch('/api/mikrotik/test').then(r => r.json()).catch(() => null),
+        fetch('/api/mikrotik/firewall-status').then(r => r.json()).catch(() => null),
+      ]);
+      const natR = await fetch('/api/mikrotik/nat').then(r => r.json()).catch(() => null);
+      const hasHttpNat  = Array.isArray(natR) && natR.some(r => r.action === 'dst-nat' && String(r['dst-port']) === '80');
+      const hasHttpsNat = Array.isArray(natR) && natR.some(r => r.action === 'dst-nat' && String(r['dst-port']) === '443');
+      const hasMasq     = Array.isArray(natR) && natR.some(r => r.action === 'masquerade' && r['out-interface-list'] === 'WAN');
+      setStatus({
+        connected:        testR?.connected ?? false,
+        host:             testR?.host      ?? '—',
+        allowedGuests:    testR?.allowedGuests ?? 0,
+        hasAcceptRule:    fwR?.hasAcceptRule       ?? false,
+        hasForwardDrop:   fwR?.hasForwardDropRule  ?? false,
+        hasInputDrop:     fwR?.hasInputDropRule     ?? false,
+        hasHttpNat,
+        hasHttpsNat,
+        hasMasq,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { probe(); }, []);
+
+  async function runSetup(action) {
+    setSetupBusy(action);
+    setSetupMsg(null);
+    try {
+      let r, d;
+      if (action === 'firewall') {
+        r = await fetch('/api/mikrotik/setup-firewall', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ interface: 'bridge' }),
+        });
+        d = await r.json();
+        const lines = [...(d.created || []).map(x => `✅ ${x}`), ...(d.skipped || []).map(x => `⏭️ ${x}`), ...(d.errors || []).map(x => `❌ ${x}`)];
+        setSetupMsg({ ok: d.ok, lines });
+      } else if (action === 'captive') {
+        r = await fetch('/api/mikrotik/setup-captive-portal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({}),
+        });
+        d = await r.json();
+        const lines = d.results || [];
+        setSetupMsg({ ok: d.ok, lines });
+      }
+      await probe();
+    } catch (e) {
+      setSetupMsg({ ok: false, lines: [`❌ ${e.message}`] });
+    } finally {
+      setSetupBusy(null);
+    }
+  }
+
+  function StatusDot({ ok, label }) {
+    return (
+      <div className="flex items-center gap-2 text-sm">
+        <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${ok ? 'bg-green-500' : 'bg-red-400'}`} />
+        <span className={ok ? 'text-slate-700' : 'text-red-600'}>{label}</span>
+      </div>
+    );
+  }
+
+  return (
+    <Card title="🛡️ MikroTik Setup & Health">
+      <div className="flex flex-wrap gap-2 mb-4">
+        <Btn color="gray" size="sm" onClick={probe} disabled={loading}>
+          <span className={loading ? 'spin inline-block' : ''}>↻</span> {loading ? 'Checking…' : 'Refresh Status'}
+        </Btn>
+        <Btn color="blue" size="sm" disabled={setupBusy === 'firewall'} onClick={() => runSetup('firewall')}>
+          {setupBusy === 'firewall' ? '⏳ Setting up…' : '⚙️ Setup Firewall Rules'}
+        </Btn>
+        <Btn color="blue" size="sm" disabled={setupBusy === 'captive'} onClick={() => runSetup('captive')}>
+          {setupBusy === 'captive' ? '⏳ Setting up…' : '🔀 Setup Captive Portal NAT'}
+        </Btn>
+      </div>
+
+      {status === null
+        ? <div className="text-slate-400 text-sm py-2"><span className="spin inline-block mr-1">↻</span> Checking router…</div>
+        : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Connection */}
+            <div className="bg-slate-50 rounded-lg p-3 space-y-1.5">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Connection</p>
+              <StatusDot ok={status.connected} label={status.connected ? `Connected — ${status.host}` : `Unreachable — ${status.host}`} />
+              <div className="text-xs text-slate-500 pl-5">{status.allowedGuests} guest IP{status.allowedGuests !== 1 ? 's' : ''} in allowed_guests</div>
+            </div>
+
+            {/* Firewall Rules */}
+            <div className="bg-slate-50 rounded-lg p-3 space-y-1.5">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Firewall Rules</p>
+              <StatusDot ok={status.hasAcceptRule}  label="Accept rule (allowed_guests)" />
+              <StatusDot ok={status.hasForwardDrop} label="Forward drop (unauthenticated)" />
+              <StatusDot ok={status.hasInputDrop}   label="Input drop (router protection)" />
+            </div>
+
+            {/* NAT Rules */}
+            <div className="bg-slate-50 rounded-lg p-3 space-y-1.5">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">NAT Rules</p>
+              <StatusDot ok={status.hasHttpNat}  label="HTTP redirect (port 80 → portal)" />
+              <StatusDot ok={status.hasHttpsNat} label="HTTPS redirect (port 443 → portal)" />
+              <StatusDot ok={status.hasMasq}     label="WAN masquerade (internet access)" />
+            </div>
+
+            {/* Overall */}
+            <div className={`rounded-lg p-3 flex items-center gap-3 ${status.connected && status.hasAcceptRule && status.hasHttpNat && status.hasMasq ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+              <span className="text-3xl">{status.connected && status.hasAcceptRule && status.hasHttpNat && status.hasMasq ? '✅' : '⚠️'}</span>
+              <div>
+                <p className="font-semibold text-sm text-slate-800">
+                  {status.connected && status.hasAcceptRule && status.hasHttpNat && status.hasMasq
+                    ? 'System ready'
+                    : 'Action required'}
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {!status.connected
+                    ? 'Router unreachable — check MIKROTIK_HOST in .env'
+                    : !status.hasAcceptRule || !status.hasForwardDrop
+                    ? 'Run "Setup Firewall Rules" to fix missing rules'
+                    : !status.hasHttpNat
+                    ? 'Run "Setup Captive Portal NAT" to enable portal redirect'
+                    : 'All required rules are in place'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+      {setupMsg && (
+        <div className={`mt-4 rounded-lg p-3 text-sm ${setupMsg.ok ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+          <ul className="space-y-1">
+            {setupMsg.lines.map((l, i) => <li key={i}>{l}</li>)}
+          </ul>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ── Retention Settings Card ───────────────────────────────────────────────────
+
+function RetentionCard() {
+  // These reflect the .env defaults — shown as read-only info since they
+  // require a server restart to change (they're read at startup).
+  const settings = [
+    { key: 'VOUCHER_CLEANUP_HOURS',  label: 'Inactive voucher cleanup',  default: '48',  unit: 'hours' },
+    { key: 'SESSION_HISTORY_DAYS',   label: 'Session history retention', default: '30',  unit: 'days'  },
+    { key: 'BANDWIDTH_LOG_DAYS',     label: 'Bandwidth log retention',   default: '7',   unit: 'days'  },
+    { key: 'AUDIT_LOG_DAYS',         label: 'Audit log retention',       default: '90',  unit: 'days'  },
+    { key: 'ISOLATION_EVENT_DAYS',   label: 'Isolation event retention', default: '30',  unit: 'days'  },
+  ];
+
+  return (
+    <Card title="🗄️ Retention Settings">
+      <p className="text-xs text-slate-500 mb-3">
+        These are configured via environment variables in your <code className="bg-slate-100 px-1 rounded">.env</code> file.
+        A server restart is required after changes.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+        {settings.map(s => (
+          <div key={s.key} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+            <span className="text-slate-600">{s.label}</span>
+            <div className="text-right">
+              <code className="text-xs bg-slate-200 px-1.5 py-0.5 rounded text-slate-700">{s.key}=<b>{s.default}</b></code>
+              <span className="text-xs text-slate-400 ml-1">{s.unit}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="text-xs text-slate-400 mt-3">💡 Edit <code className="bg-slate-100 px-1 rounded">.env</code> then restart the server to apply changes.</p>
+    </Card>
+  );
+}
+
+// ── Backup / Export Card ──────────────────────────────────────────────────────
+
+function BackupCard({ token }) {
+  const [busy, setBusy] = useState(null);
+  const [msg,  setMsg]  = useState(null);
+
+  async function exportData(type) {
+    setBusy(type); setMsg(null);
+    try {
+      let data = {};
+      if (type === 'full') {
+        const [rooms, vaps, vouchers] = await Promise.all([
+          api(token, '/rooms').then(r => r.json()).catch(() => []),
+          api(token, '/vaps').then(r => r.json()).catch(() => []),
+          api(token, '/vouchers').then(r => r.json()).catch(() => []),
+        ]);
+        data = {
+          exportedAt: new Date().toISOString(),
+          version: '1.0',
+          rooms,
+          vaps,
+          vouchers: vouchers.filter(v => v.code !== 'SYSTEM_BYPASS'),
+        };
+      } else if (type === 'sessions') {
+        const sessions = await api(token, '/sessions/history').then(r => r.json()).catch(() => []);
+        data = { exportedAt: new Date().toISOString(), sessions };
+      }
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `hotel-wifi-${type}-${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMsg({ ok: true, text: `✅ ${type === 'full' ? 'Config' : 'Session history'} exported` });
+    } catch (e) {
+      setMsg({ ok: false, text: `❌ Export failed: ${e.message}` });
+    } finally { setBusy(null); }
+  }
+
+  return (
+    <Card title="💾 Backup & Export">
+      <p className="text-xs text-slate-500 mb-3">Export your current configuration or session history as JSON — useful before making changes or migrating to a new server.</p>
+      <div className="flex flex-wrap gap-2 items-center">
+        <Btn color="gray" size="sm" disabled={busy === 'full'} onClick={() => exportData('full')}>
+          {busy === 'full' ? '⏳ Exporting…' : '⬇ Export Config (Rooms + VAPs + Vouchers)'}
+        </Btn>
+        <Btn color="gray" size="sm" disabled={busy === 'sessions'} onClick={() => exportData('sessions')}>
+          {busy === 'sessions' ? '⏳ Exporting…' : '⬇ Export Session History'}
+        </Btn>
+        {msg && <span className={`text-sm ${msg.ok ? 'text-green-600' : 'text-red-600'}`}>{msg.text}</span>}
+      </div>
+    </Card>
+  );
+}
+
 // ── Settings Tab ──────────────────────────────────────────────────────────────
 
-function SettingsTab({ token }) {
+function SettingsTab({ token, showToast }) {
   const [cur,   setCur]   = useState('');
   const [npw,   setNpw]   = useState('');
   const [conf,  setConf]  = useState('');
@@ -1259,6 +1727,24 @@ function SettingsTab({ token }) {
   const [bypassHours,    setBypassHours]    = useState('24');
   const [bypassMsg,      setBypassMsg]      = useState(null);
   const [bypassBusy,     setBypassBusy]     = useState(false);
+  const [bypassedList,   setBypassedList]   = useState([]);
+
+  async function loadBypassed() {
+    try {
+      const r = await fetch('/api/mikrotik/guests');
+      const d = await r.json();
+      const list = (d.list || []).filter(e => e.comment?.startsWith('Bypassed:') || e.comment?.includes('bypass'));
+      setBypassedList(list);
+    } catch {}
+  }
+
+  async function revokeBypassed(id, address) {
+    if (!confirm(`Revoke access for ${address}?`)) return;
+    try {
+      await fetch(`/api/mikrotik/remove?ip=${encodeURIComponent(address)}`);
+      loadBypassed();
+    } catch {}
+  }
 
   async function bypassDevice(e) {
     e.preventDefault();
@@ -1274,6 +1760,7 @@ function SettingsTab({ token }) {
       if (d.ok) {
         setBypassMsg({ ok: true, text: d.results.join(' | ') });
         setBypassIp(''); setBypassMac(''); setBypassLabel('');
+        loadBypassed();
       } else {
         setBypassMsg({ ok: false, text: d.error || d.results?.join(' | ') || 'Failed' });
       }
@@ -1296,7 +1783,7 @@ function SettingsTab({ token }) {
     if (r.ok) setAdmins(await r.json());
   }, [token]);
 
-  useEffect(() => { loadAudit(); loadAdmins(); }, [loadAudit, loadAdmins]);
+  useEffect(() => { loadAudit(); loadAdmins(); loadBypassed(); }, [loadAudit, loadAdmins]);
 
   async function changePw(e) {
     e.preventDefault();
@@ -1322,10 +1809,26 @@ function SettingsTab({ token }) {
     loadAdmins();
   }
 
-  async function removeAdmin(id, username) {
-    if (!confirm(`Remove admin "${username}"?`)) return;
-    await api(token, '/auth/admins/' + id, { method: 'DELETE' });
+  async function removeAdmin(id, username, targetRole) {
+    // For manager removing another manager — require typing the username
+    if (adminRole === 'manager' && targetRole === 'manager') {
+      const typed = prompt(`This account has manager privileges. Type "${username}" to confirm removal:`);
+      if (typed !== username) { alert('Cancelled — username did not match.'); return; }
+    } else {
+      if (!confirm(`Remove admin "${username}"?`)) return;
+    }
+    const r = await api(token, '/auth/admins/' + id, { method: 'DELETE' });
+    if (r.ok) showToast?.(`✅ Admin "${username}" removed`);
+    else { const d = await r.json(); showToast?.(`❌ ${d.error || 'Remove failed'}`, false); }
     loadAdmins();
+  }
+
+  async function forceLogoutOthers() {
+    if (!confirm('Issue a new token for your account? Other active sessions will be invalidated on their next action.')) return;
+    const r = await api(token, '/auth/force-logout-others', { method: 'POST' });
+    const d = await r.json();
+    if (r.ok) showToast?.('✅ New token issued — other sessions invalidated');
+    else showToast?.(`❌ ${d.error || 'Failed'}`, false);
   }
 
   const [showPwForm, setShowPwForm] = useState(false);
@@ -1342,6 +1845,15 @@ function SettingsTab({ token }) {
     <div className="max-w-4xl">
       <PageHeader title="Settings" />
 
+      {/* ══ Network ══════════════════════════════════════════════════════════ */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">🛡️</div>
+        <h3 className="font-semibold text-slate-700 text-sm uppercase tracking-wide">Network</h3>
+        <div className="flex-1 h-px bg-slate-200" />
+      </div>
+
+      <MikroTikHealthCard token={token} />
+
       {/* ── Smart TV / Device Bypass ── */}
       <Card title="📺 Smart TV / Device Bypass">
         <p className="text-xs text-slate-500 mb-3">Smart TVs can't complete the captive portal. Add their IP or MAC directly to bypass the portal for a set duration.</p>
@@ -1356,18 +1868,47 @@ function SettingsTab({ token }) {
           </div>
         </form>
         <p className="text-xs text-slate-400">💡 Find the TV's IP in MikroTik: IP → ARP or DHCP Leases. Find MAC in the TV's network settings.</p>
+
+        {/* Active bypasses table */}
+        {bypassedList.length > 0 && (
+          <div className="mt-4">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Active Bypasses</p>
+            <Tbl head={['Address','Label','Timeout','Action']}>
+              {bypassedList.map(e => (
+                <Tr key={e['.id']}>
+                  <Td><code className="text-xs bg-slate-100 px-1 rounded">{e.address}</code></Td>
+                  <Td className="text-xs text-slate-500">{(e.comment || '').replace('Bypassed: ', '')}</Td>
+                  <Td className="text-xs">{e.timeout || <span className="text-slate-400">Permanent</span>}</Td>
+                  <Td><Btn size="sm" color="red" onClick={() => revokeBypassed(e['.id'], e.address)}>Revoke</Btn></Td>
+                </Tr>
+              ))}
+            </Tbl>
+          </div>
+        )}
       </Card>
+
+      {/* ══ Security ═════════════════════════════════════════════════════════ */}
+      <div className="flex items-center gap-3 mb-3 mt-6">
+        <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">🔐</div>
+        <h3 className="font-semibold text-slate-700 text-sm uppercase tracking-wide">Security</h3>
+        <div className="flex-1 h-px bg-slate-200" />
+      </div>
 
       {/* ── Account Security ── */}
       <Card>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
             <p className="font-semibold text-sm">🔐 Account Security</p>
-            <p className="text-xs text-slate-500 mt-0.5">Change your admin login password</p>
+            <p className="text-xs text-slate-500 mt-0.5">Change your admin login password or invalidate other active sessions</p>
           </div>
-          <Btn color="gray" onClick={() => { setShowPwForm(v => !v); setMsg(null); }}>
-            {showPwForm ? '✕ Cancel' : '🔑 Change Password'}
-          </Btn>
+          <div className="flex gap-2">
+            <Btn color="gray" size="sm" onClick={forceLogoutOthers} title="Issues a fresh token and invalidates other active sessions for your account">
+              🚪 Force Logout Others
+            </Btn>
+            <Btn color="gray" onClick={() => { setShowPwForm(v => !v); setMsg(null); }}>
+              {showPwForm ? '✕ Cancel' : '🔑 Change Password'}
+            </Btn>
+          </div>
         </div>
         {showPwForm && (
           <form onSubmit={changePw} className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1410,7 +1951,15 @@ function SettingsTab({ token }) {
 
           {/* Admins table */}
           <Tbl head={['Username','Role','Status','Change Role','Action']}>
-            {admins.map((a) => (
+            {admins.length === 0
+              ? [1,2].map(i => (
+                  <Tr key={i}>
+                    {[1,2,3,4,5].map(j => (
+                      <Td key={j}><div className="h-4 bg-slate-100 rounded animate-pulse" /></Td>
+                    ))}
+                  </Tr>
+                ))
+              : admins.map((a) => (
               <Tr key={a.id}>
                 <Td className="font-medium">{a.username}</Td>
                 <Td><Badge color={a.role === 'manager' ? 'blue' : 'gray'}>{a.role}</Badge></Td>
@@ -1424,10 +1973,11 @@ function SettingsTab({ token }) {
                   </Select>
                 </Td>
                 <Td>
-                  <Btn size="sm" color="red" onClick={() => removeAdmin(a.id, a.username)}>Remove</Btn>
+                  <Btn size="sm" color="red" onClick={() => removeAdmin(a.id, a.username, a.role)}>Remove</Btn>
                 </Td>
               </Tr>
-            ))}
+            ))
+          }
           </Tbl>
 
           {/* Add new admin */}
@@ -1451,6 +2001,23 @@ function SettingsTab({ token }) {
         </Card>
       )}
 
+      {/* ══ Data ════════════════════════════════════════════════════════════ */}
+      <div className="flex items-center gap-3 mb-3 mt-6">
+        <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">🗄️</div>
+        <h3 className="font-semibold text-slate-700 text-sm uppercase tracking-wide">Data</h3>
+        <div className="flex-1 h-px bg-slate-200" />
+      </div>
+
+      <RetentionCard />
+      <BackupCard token={token} />
+
+      {/* ══ System ══════════════════════════════════════════════════════════ */}
+      <div className="flex items-center gap-3 mb-3 mt-6">
+        <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">⚙️</div>
+        <h3 className="font-semibold text-slate-700 text-sm uppercase tracking-wide">System</h3>
+        <div className="flex-1 h-px bg-slate-200" />
+      </div>
+
       {/* ── System Info ── */}
       <Card title="System Info">
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm text-slate-600">
@@ -1473,6 +2040,11 @@ function SettingsTab({ token }) {
       </Card>
 
       {adminRole === 'manager' && (
+      <><div className="flex items-center gap-3 mb-3 mt-6">
+        <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">📋</div>
+        <h3 className="font-semibold text-slate-700 text-sm uppercase tracking-wide">Audit Log</h3>
+        <div className="flex-1 h-px bg-slate-200" />
+      </div>
       <Card title="Audit Log">
         <>
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -1492,11 +2064,15 @@ function SettingsTab({ token }) {
             </Btn>
           </div>
         </div>
-        {(() => {
+        {auditLoading && audit.length === 0
+          ? <div className="space-y-2 animate-pulse">{[1,2,3,4].map(i => (
+              <div key={i} className="h-8 bg-slate-100 rounded-lg" />
+            ))}</div>
+          : (() => {
           const cutoff = auditFilterDays === 'all' ? null : new Date(Date.now() - parseInt(auditFilterDays) * 86400000);
           const filtered = cutoff ? audit.filter(e => new Date(e.occurred_at) >= cutoff) : audit;
           const grouped = filtered.reduce((acc, e) => {
-            const day = new Date(e.occurred_at).toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+            const day = fmtDayGroup(e.occurred_at);
             if (!acc[day]) acc[day] = [];
             acc[day].push(e);
             return acc;
@@ -1512,13 +2088,27 @@ function SettingsTab({ token }) {
               {!auditCollapsed[day] && (
                 <Tbl head={['Time','Admin','Action','Details','IP']}>
                   {entries.map((e) => {
-                    const isDestructive = /DELETE|DEACTIVATE/.test(e.action);
-                    const isLogin       = /LOGIN|PASSWORD/.test(e.action);
+                    const action = e.action || '';
+                    // Fine-grained color buckets
+                    const badgeColor =
+                      /DELETE_ADMIN|REMOVE|FORCE_LOGOUT/.test(action) ? 'red' :
+                      /DELETE|DEACTIVATE/.test(action)                 ? 'red' :
+                      /LOGIN|LOGOUT|PASSWORD|RESET/.test(action)       ? 'blue' :
+                      /CREATE_VOUCHER|EXTEND_VOUCHER/.test(action)      ? 'green' :
+                      /CREATE_ADMIN|UPDATE_ROLE/.test(action)           ? 'purple' :
+                      /SESSION|DISCONNECT|THROTTLE/.test(action)        ? 'yellow' :
+                      /BYPASS/.test(action)                             ? 'orange' :
+                      'gray';
+                    // Map to Badge's supported colors (purple/orange fall back to blue/yellow)
+                    const mappedColor =
+                      badgeColor === 'purple' ? 'blue' :
+                      badgeColor === 'orange' ? 'yellow' :
+                      badgeColor;
                     return (
                       <Tr key={e.id}>
-                        <Td className="text-xs text-slate-400 whitespace-nowrap">{new Date(e.occurred_at).toLocaleTimeString()}</Td>
+                        <Td className="text-xs text-slate-400 whitespace-nowrap">{fmtTime(e.occurred_at)}</Td>
                         <Td className="font-medium">{e.admin_username}</Td>
-                        <Td><Badge color={isDestructive ? 'red' : isLogin ? 'blue' : 'green'}>{e.action}</Badge></Td>
+                        <Td><Badge color={mappedColor}>{action}</Badge></Td>
                         <Td className="text-xs text-slate-500 max-w-xs truncate" title={e.details}>{e.details}</Td>
                         <Td className="text-xs text-slate-400">{e.ip_address || '—'}</Td>
                       </Tr>
@@ -1531,7 +2121,7 @@ function SettingsTab({ token }) {
         })()}
         </>
       </Card>
-      )}
+      </> )}
     </div>
   );
 }
@@ -1550,13 +2140,62 @@ const TABS = [
   { id: 'settings',   label: 'Settings'        },
 ];
 
-function Dashboard({ token, onLogout }) {
+// ── JWT decode helper (no verify — just read claims for UI display) ────────────
+function decodeToken(token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload;
+  } catch { return null; }
+}
+
+function Dashboard({ token, onLogout, onTokenRefresh }) {
   const [tab,    setTab]    = useState('overview');
   const [events, setEvents] = useState([]);
   const [reload, setReload] = useState(0);
+  const [liveBandwidth, setLiveBandwidth] = useState({});
+  const [toast,  setToast]  = useState(null); // { msg, ok }
+  const [tokenInfo, setTokenInfo] = useState(null);
+
+  // Decode token expiry for display
+  useEffect(() => {
+    const payload = decodeToken(token);
+    if (payload?.exp) setTokenInfo({ exp: payload.exp, username: payload.username });
+  }, [token]);
+
+  // Token expiry countdown
+  const [expiresIn, setExpiresIn] = useState('');
+  useEffect(() => {
+    if (!tokenInfo?.exp) return;
+    const update = () => {
+      const secs = tokenInfo.exp - Math.floor(Date.now() / 1000);
+      if (secs <= 0) { setExpiresIn('Expired'); return; }
+      if (secs < 3600) setExpiresIn(`${Math.floor(secs / 60)}m left`);
+      else if (secs < 86400) setExpiresIn(`${Math.floor(secs / 3600)}h left`);
+      else setExpiresIn(`${Math.floor(secs / 86400)}d left`);
+    };
+    update();
+    const t = setInterval(update, 30000);
+    return () => clearInterval(t);
+  }, [tokenInfo]);
+
+  function showToast(msg, ok = true) {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3500);
+  }
+
+  async function stayLoggedIn() {
+    try {
+      const r = await api(token, '/auth/force-logout-others', { method: 'POST' });
+      const d = await r.json();
+      if (r.ok && d.token) {
+        onTokenRefresh(d.token);
+        showToast('✅ Session refreshed — you are now logged in with a fresh token');
+      }
+    } catch { showToast('❌ Failed to refresh session', false); }
+  }
 
   function pushEvent(icon, msg) {
-    setEvents(p => [{ icon, msg, time: new Date().toLocaleTimeString() }, ...p].slice(0, 30));
+    setEvents(p => [{ icon, msg, time: fmtTime(new Date()) }, ...p].slice(0, 30));
   }
 
   useEffect(() => {
@@ -1569,22 +2208,11 @@ function Dashboard({ token, onLogout }) {
     socket.on('isolation:blocked',   d   => pushEvent('🔒', `Blocked: Room ${d.source.room} → Room ${d.target.room}`));
     socket.on('vouchers:updated',    ()  => pushEvent('⏰', 'Voucher(s) auto-expired'));
     // Live bandwidth update — fires every 60s per active session
-    socket.on('session:bandwidth',   d   => {
-      // Update the Mbps cell
-      const bwCell = document.getElementById(`bw-${d.sessionId}`);
-      if (bwCell) {
-        bwCell.innerHTML = `<b>${Number(d.avg_mbps).toFixed(2)} Mbps</b>`;
-        bwCell.style.color = d.is_throttled ? '#dc2626' : '#16a34a';
-      }
-      // Update the status badge cell
-      const badgeCell = document.getElementById(`badge-${d.sessionId}`);
-      if (badgeCell) {
-        if (d.is_throttled) {
-          badgeCell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">⚡ Throttled</span>';
-        } else {
-          badgeCell.innerHTML = '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">✅ Normal</span>';
-        }
-      }
+    socket.on('session:bandwidth', d => {
+      setLiveBandwidth(prev => ({
+        ...prev,
+        [d.sessionId]: { avg_mbps: d.avg_mbps, is_throttled: d.is_throttled }
+      }));
     });
     // Throttle state change — push to events feed and reload sessions list
     socket.on('session:throttle',    d   => {
@@ -1600,6 +2228,12 @@ function Dashboard({ token, onLogout }) {
 
   return (
     <div className="min-h-screen bg-slate-100">
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-[9999] px-4 py-3 rounded-lg shadow-lg text-sm font-medium transition-all ${toast.ok ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+          {toast.msg}
+        </div>
+      )}
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
         <div className="flex items-center px-4 h-14 gap-1 flex-wrap">
           <span className="font-bold text-sm mr-2 whitespace-nowrap">🏨 Hotel WiFi</span>
@@ -1609,19 +2243,35 @@ function Dashboard({ token, onLogout }) {
               {t.label}
             </button>
           ))}
-          <button onClick={onLogout} className="ml-auto text-xs border border-slate-200 px-3 py-1.5 rounded hover:bg-slate-50 whitespace-nowrap">Logout</button>
+          <div className="ml-auto flex items-center gap-2">
+            {tokenInfo && (
+              <div className="flex items-center gap-1.5 text-xs text-slate-400 border border-slate-200 rounded px-2 py-1">
+                <span>👤 {tokenInfo.username}</span>
+                <span className="text-slate-300">·</span>
+                <span className={expiresIn.includes('m') && parseInt(expiresIn) < 30 ? 'text-amber-500 font-medium' : ''}>
+                  {expiresIn}
+                </span>
+                {expiresIn.includes('m') && parseInt(expiresIn) < 60 && (
+                  <button onClick={stayLoggedIn} className="ml-1 text-blue-500 hover:text-blue-700 font-medium">
+                    Refresh
+                  </button>
+                )}
+              </div>
+            )}
+            <button onClick={onLogout} className="text-xs border border-slate-200 px-3 py-1.5 rounded hover:bg-slate-50 whitespace-nowrap">Logout</button>
+          </div>
         </div>
       </nav>
       <div className="max-w-7xl mx-auto p-5">
         {tab === 'overview'   && <OverviewTab   token={token} events={events} reloadSignal={reload} onNavigate={setTab} />}
-        {tab === 'sessions'   && <SessionsTab   token={token} reloadSignal={reload} />}
+        {tab === 'sessions'   && <SessionsTab   token={token} reloadSignal={reload} liveBandwidth={liveBandwidth} />}
         {tab === 'history'    && <HistoryTab    token={token} />}
         {tab === 'vaps'       && <VAPsTab       token={token} />}
         {tab === 'vouchers'   && <VouchersTab   token={token} />}
         {tab === 'rooms'      && <RoomsTab      token={token} />}
         {tab === 'analytics'  && <AnalyticsTab  token={token} />}
         {tab === 'topology'   && <TopologyTab   token={token} />}
-        {tab === 'settings'   && <SettingsTab   token={token} />}
+        {tab === 'settings'   && <SettingsTab   token={token} showToast={showToast} />}
       </div>
     </div>
   );
@@ -1644,6 +2294,7 @@ function App() {
   }, []);
 
   function login(t) { localStorage.setItem(TOKEN_KEY, t); setToken(t); }
+  function refreshToken(t) { localStorage.setItem(TOKEN_KEY, t); setToken(t); }
   async function logout() {
     if (token) {
       try { await api(token, '/auth/logout', { method: 'POST' }); } catch {}
@@ -1677,7 +2328,7 @@ function App() {
     };
   }, [token]);
 
-  return token ? <Dashboard token={token} onLogout={logout} /> : <LoginScreen onLogin={login} />;}
+  return token ? <Dashboard token={token} onLogout={logout} onTokenRefresh={refreshToken} /> : <LoginScreen onLogin={login} />;}
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
