@@ -325,17 +325,52 @@
         });
     }
 
+    function friendlyDeviceName() {
+      var ua = navigator.userAgent || '';
+      if (/iPhone/i.test(ua)) return 'iPhone';
+      if (/iPad/i.test(ua)) return 'iPad';
+      if (/Android/i.test(ua)) {
+        var m = ua.match(/Android\s?([\d.]+)?/i);
+        return m && m[1] ? 'Android ' + m[1] + ' Device' : 'Android Device';
+      }
+      if (/Windows/i.test(ua)) return 'Windows Device';
+      if (/Macintosh/i.test(ua)) return 'Mac';
+      return 'Guest Device';
+    }
+
     function activateVoucher(code, deviceName) {
+      // Fetch our own IP first — the phone knows its IP from a direct connection,
+      // which avoids the NAT masquerade rewriting the source to 192.168.88.1
+      var ipPromise = fetch(API + '/myip')
+        .then(function(r) { return r.json(); })
+        .then(function(d) { return d.ip || null; })
+        .catch(function() { return null; });
+
+      ipPromise.then(function(clientIp) {
       fetch(API + '/vouchers/' + code + '/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_name: deviceName || null })
+        body: JSON.stringify({ device_name: deviceName || friendlyDeviceName(), ip_address: clientIp })
       }).then(function(r) {
         return r.json().then(function(d) { return { ok: r.ok, d: d }; });
       }).then(function(res) {
         if (!res.ok) {
-          document.getElementById('errorDetail').textContent = res.d.error || 'Failed to activate voucher';
-          showPage('page-error');
+          if (res.d.useRealBrowser) {
+            // OS WebView blocked — show instructions to open in real browser
+            document.getElementById('errorDetail').textContent = res.d.error;
+            showPage('page-error');
+            // Also update the button to be more helpful
+            var btn = document.querySelector('#page-error .btn');
+            if (btn) {
+              btn.textContent = 'Open in Browser';
+              btn.onclick = function() {
+                window.open(location.href, '_blank') || (location.href = location.href);
+              };
+            }
+          } else {
+            document.getElementById('errorDetail').textContent = res.d.error || 'Failed to activate voucher';
+            showPage('page-error');
+          }
         } else {
           populateConnected(res.d);
           showPage('page-connected');
@@ -344,6 +379,7 @@
         document.getElementById('errorDetail').textContent = 'Cannot reach server. Try again.';
         showPage('page-error');
       });
+      }); // end ipPromise.then
     }
 
     document.getElementById('voucherForm').addEventListener('submit', function(e) {
@@ -399,13 +435,24 @@
     // Disconnect button
     document.getElementById('disconnectBtn').addEventListener('click', function() {
       if (!currentSessionId) { showPage('page-code'); return; }
-      fetch(API + '/sessions/' + currentSessionId, {
+      if (countdownTimer) clearInterval(countdownTimer);
+      var sid = currentSessionId;
+      currentSessionId = null;
+
+      // Show disconnected state immediately — don't wait for server or MikroTik
+      showPage('page-expired');
+      var h1 = document.querySelector('#page-expired h1');
+      var sub = document.querySelector('#page-expired .subtitle');
+      var btn = document.querySelector('#page-expired .btn');
+      if (h1) h1.textContent = 'Disconnected';
+      if (sub) sub.textContent = 'You have been disconnected. Scan the QR code or enter a new voucher code to reconnect.';
+      if (btn) { btn.textContent = 'Connect Again'; btn.onclick = function() { showPage('page-code'); }; }
+
+      // Fire disconnect request in background — UI already updated
+      fetch(API + '/sessions/' + sid, {
         method: 'DELETE',
         headers: { 'Authorization': 'Bearer guest' }
-      }).finally(function() {
-        if (countdownTimer) clearInterval(countdownTimer);
-        showPage('page-code');
-      });
+      }).catch(function() { /* ignore — session will expire naturally */ });
     });
 
     function startCountdown(expires) {

@@ -76,7 +76,7 @@ export async function mikrotikAllowGuest(
       ? `${days}d${String(remH).padStart(2, '0')}:00:00`
       : `${String(durationHours).padStart(2, '0')}:00:00`;
 
-    // RouterOS on this device requires PUT (not POST) to create address-list entries
+    // This RouterOS build requires PUT (not POST) to create address-list entries
     const res = await fetch(`${MT_BASE()}/ip/firewall/address-list`, {
       method: 'PUT',
       headers: mtHeaders(),
@@ -144,11 +144,6 @@ export async function mikrotikRemoveGuestByIp(ip: string): Promise<boolean> {
     } else {
       console.log(`[MikroTik] ℹ️  ${normalizedIp} not found in allowed_guests (already removed or never added)`);
     }
-
-    // 2. Flush active connection tracking for this IP
-    //    Without this, "accept established,related" rule keeps existing TCP sessions alive
-    //    even after the IP is removed from allowed_guests.
-    await mikrotikFlushConnections(normalizedIp);
 
     return true;
   } catch (e: any) {
@@ -398,21 +393,10 @@ export async function mikrotikAssignPortVlan(
     // 1. Update PVID on the bridge port
     let portId = await findBridgePortId(iface);
     if (!portId) {
-      // Port not in bridge — attempt auto-remediation
-      console.log(`[MikroTik] Port ${iface} not in bridge — attempting auto-add`);
-      const addResult = await mikrotikAddBridgePort(iface, bridge());
-      
-      if (!addResult.ok) {
-        console.error(`[MikroTik] Failed to auto-add ${iface} to bridge: ${addResult.error}`);
-        return false;
-      }
-      
-      // Retry finding the bridge port after successful add
-      portId = await findBridgePortId(iface);
-      if (!portId) {
-        console.error(`[MikroTik] Bridge port still not found for interface ${iface} after auto-add`);
-        return false;
-      }
+      // Port not in main bridge — may be in a dedicated room bridge (bridge-room1, bridge-room2).
+      // In that setup VLAN assignment is handled by separate bridges, not PVID — skip silently.
+      console.log(`[MikroTik] Port ${iface} not in main bridge — skipping VLAN assignment (using dedicated bridge)`);
+      return false;
     }
 
     const pvid = await fetch(`${MT_BASE()}/interface/bridge/port/${encodeURIComponent(portId)}`, {

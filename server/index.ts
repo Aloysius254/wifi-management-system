@@ -467,8 +467,11 @@ app.get('/api/socket-config', (_req, res) => {
 });
 
 app.get('/api/myip', (req, res) => {
-  const raw = (req.headers['x-forwarded-for'] as string | undefined) || req.socket.remoteAddress || '—';
-  const ip = (Array.isArray(raw) ? raw[0] : raw).replace(/^::ffff:/, '').trim();
+  // x-forwarded-for is set by the port-8080 proxy middleware with the real socket IP.
+  // Fall back to remoteAddress only if the request came directly to port 3001.
+  const forwarded = req.headers['x-forwarded-for'] as string | undefined;
+  const raw = (forwarded ? forwarded.split(',')[0] : null) || req.socket.remoteAddress || '—';
+  const ip = raw.replace(/^::ffff:/, '').trim();
   res.json({ ip });
 });
 
@@ -487,6 +490,9 @@ app.get('/favicon.ico', (_req, res) => {
 
 app.get('/guest', (_req, res) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.sendFile(path.join(process.cwd(), 'client', 'guest.html'));
 });
 
@@ -494,23 +500,92 @@ app.use(errorHandler);
 
 // ── Socket.IO ─────────────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
-  console.log(`[Socket] Client connected: ${socket.id}`);
-  socket.on('disconnect', () => console.log(`[Socket] Client disconnected: ${socket.id}`));
+  // Only log admin dashboard connections to reduce terminal noise
+  const origin = socket.handshake.headers.origin || socket.handshake.headers.referer || '';
+  if (!origin.includes('/guest')) {
+    console.log(`[Socket] Admin connected: ${socket.id.substring(0, 8)}`);
+    socket.on('disconnect', () => console.log(`[Socket] Admin disconnected: ${socket.id.substring(0, 8)}`));
+  }
 });
 
 export { io };
 
 // ── Start main server ─────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT) || 3001;
-httpServer.listen(PORT, '0.0.0.0', () => {
+httpServer.listen(PORT, '0.0.0.0', async () => {
   const ip = getServerIp();
   console.log(`\n🏨  Hotel WiFi Manager running`);
-  console.log(`   Local:        http://localhost:${PORT}`);
-  console.log(`   Network:      http://${ip}:${PORT}`);
-  console.log(`   Guest portal: http://${ip}:${PORT}/guest\n`);
+  console.log(`   Local (HTTP):  http://localhost:${PORT}`);
+  console.log(`   Network (HTTP): http://${ip}:${PORT}`);
+  console.log(`   Guest portal:  http://${ip}:${PORT}/guest\n`);
   startExpiryJob();
   startBandwidthJob();
+
+  // Re-add server PC to allowed_guests on every startup
+  // This ensures the entry survives MikroTik reboots
+  if (process.env.MIKROTIK_HOST && ip) {
+    try {
+      const MT_BASE = `http://${process.env.MIKROTIK_HOST}/rest`;
+      const MT_AUTH = 'Basic ' + Buffer.from(`${process.env.MIKROTIK_USER}:${process.env.MIKROTIK_PASS}`).toString('base64');
+
+      // Remove stale entry first
+      const existing = await fetch(`${MT_BASE}/ip/firewall/address-list?list=allowed_guests`, {
+        headers: { Authorization: MT_AUTH }, signal: AbortSignal.timeout(4000),
+      });
+      if (existing.ok) {
+        const contentType = existing.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          console.log(`[Startup] MikroTik returned non-JSON (${contentType}) — REST API may not be enabled yet`);
+        } else {
+          const list: any[] = await existing.json() as any[];
+          const serverEntry = list.find(e => e.address === ip && e.comment === 'server-pc-permanent');
+          if (!serverEntry) {
+            // Add permanent entry (no timeout)
+            await fetch(`${MT_BASE}/ip/firewall/address-list`, {
+              method: 'PUT',
+              headers: { Authorization: MT_AUTH, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ list: 'allowed_guests', address: ip, comment: 'server-pc-permanent' }),
+              signal: AbortSignal.timeout(4000),
+            });
+            console.log(`[Startup] ✅ Server PC (${ip}) added to allowed_guests`);
+          } else {
+            console.log(`[Startup] ✅ Server PC (${ip}) already in allowed_guests`);
+          }
+        }
+      }
+    } catch (e: any) {
+      console.log(`[Startup] Could not add server PC to allowed_guests: ${e.message}`);
+    }
+  }
 });
+
+// ── HTTPS admin server (port 3443) ────────────────────────────────────────────
+// Serves the same admin app over TLS so JWT tokens are never sent in cleartext.
+// Uses the same self-signed cert as the captive portal HTTPS listener.
+// Access via https://<ip>:3443 — browser will warn about self-signed cert,
+// click "Advanced → Proceed" once and the browser will remember it.
+const HTTPS_PORT = Number(process.env.HTTPS_PORT) || 3443;
+// Load cert once and reuse for both admin HTTPS and captive portal HTTPS servers
+const tlsCreds = ensureTlsCertificate();
+const adminTlsCreds = tlsCreds;
+if (adminTlsCreds) {
+  const httpsAdminServer = createHttpsServer(adminTlsCreds, app);
+  const httpsIo = new SocketServer(httpsAdminServer, {
+    cors: { origin: '*', methods: ['GET', 'POST', 'DELETE', 'PATCH'] },
+  });
+  // Share the same io instance events with the HTTPS server
+  httpsIo.on('connection', (socket) => {
+    // HTTPS admin socket — suppress verbose logging
+    socket.on('disconnect', () => {});
+  });
+  httpsAdminServer.listen(HTTPS_PORT, '0.0.0.0', () => {
+    const ip = getServerIp();
+    console.log(`   Admin (HTTPS): https://localhost:${HTTPS_PORT}  ← use this for secure access`);
+    console.log(`   Admin (HTTPS): https://${ip}:${HTTPS_PORT}\n`);
+  });
+} else {
+  console.warn('[HTTPS] Admin HTTPS server not started — certificate unavailable');
+}
 
 // ── Port 8080 captive portal ──────────────────────────────────────────────────
 // All unauthenticated traffic is NAT-redirected here by MikroTik.
@@ -525,24 +600,52 @@ portalApp.use((req: any, _res: any, next: any) => {
   next();
 });
 
-// Captive portal detection probe URLs — serve guest portal directly (no redirect)
-// so Smart TVs that don't follow redirects still get the portal page.
+// Captive portal detection probe URLs
+// For Android/iOS WebView probes: return a page that redirects to Chrome/Safari
+// so the voucher activation gets the phone's real IP (not the WebView's NAT'd IP).
+const serverIpForPortal = () => process.env.MIKROTIK_SERVER_IP || getServerIp();
+
+const redirectToBrowser = (_req: any, res: any) => {
+  const portalUrl = `http://${serverIpForPortal()}:8080/guest`;
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  // This page immediately opens the portal in the real browser (Chrome/Safari)
+  // rather than handling the voucher inside the OS captive portal WebView.
+  // The WebView has a broken NAT source IP (192.168.88.1); Chrome has the real one.
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta http-equiv="refresh" content="0;url=${portalUrl}">
+<title>Hotel WiFi</title></head><body>
+<script>window.location.replace('${portalUrl}');</script>
+<p>Opening Hotel WiFi portal... <a href="${portalUrl}">Click here if not redirected</a></p>
+</body></html>`);
+};
+
 const serveGuestPortal = (_req: any, res: any) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.sendFile(path.join(process.cwd(), 'client', 'guest.html'));
 };
-portalApp.get('/generate_204',              serveGuestPortal);
-portalApp.get('/gen_204',                   serveGuestPortal);
-portalApp.get('/generate204',               serveGuestPortal);
-portalApp.get('/hotspot-detect.html',       serveGuestPortal);
-portalApp.get('/library/test/success.html', serveGuestPortal);
-portalApp.get('/ncsi.txt',                  serveGuestPortal);
-portalApp.get('/connecttest.txt',           serveGuestPortal);
-portalApp.get('/success.txt',               serveGuestPortal);
+
+// Android probes — redirect to real browser
+portalApp.get('/generate_204',              redirectToBrowser);
+portalApp.get('/gen_204',                   redirectToBrowser);
+portalApp.get('/generate204',               redirectToBrowser);
+portalApp.get('/connecttest.txt',           redirectToBrowser);
+// Apple probes — redirect to real browser
+portalApp.get('/hotspot-detect.html',       redirectToBrowser);
+portalApp.get('/library/test/success.html', redirectToBrowser);
+portalApp.get('/bag',                       redirectToBrowser);
+// Windows probes
+portalApp.get('/ncsi.txt',                  redirectToBrowser);
+portalApp.get('/success.txt',               redirectToBrowser);
+portalApp.get('/redirect',                  redirectToBrowser);
+// Samsung/LG Smart TV — serve directly (TVs can't open Chrome)
 portalApp.get('/captiveportal/login',       serveGuestPortal);
 portalApp.get('/check.js',                  serveGuestPortal);
-portalApp.get('/bag',                       serveGuestPortal);
-portalApp.get('/redirect',                  serveGuestPortal);
+// /guest serves the actual portal page directly (this is what Chrome opens)
+portalApp.get('/guest',                     serveGuestPortal);
 
 portalApp.use('/api', (req: any, res: any, next: any) => { req.url = '/api' + req.url; (app as any)(req, res, next); });
 portalApp.use('/socket.io', (req: any, res: any, next: any) => { (app as any)(req, res, next); });
@@ -557,7 +660,7 @@ createHttpServer(portalApp).listen(8080, '0.0.0.0', () => {
 // iOS 14+ and Android 10+ probe captive portals via HTTPS (port 443).
 // MikroTik NAT redirects port 443 → 8443 on this server.
 // We serve guest.html over HTTPS so the OS shows the captive portal popup.
-const tlsCreds = ensureTlsCertificate();
+// Port 8443 HTTPS captive portal
 if (tlsCreds) {
   const httpsPortalApp = express();
   httpsPortalApp.use(express.json());

@@ -292,7 +292,7 @@ export function startBandwidthJob(): void {
         try {
           const ip = session.ip_address?.replace(/^::ffff:/, '').trim() || null;
 
-          // Get real usage from MikroTik, fall back to simulation
+          // Get real usage from MikroTik, fall back to 0 (not simulation) when configured
           let usageMbps: number;
           if (hasMikrotik && ip) {
             // Try per-session queue first (throttled sessions have one)
@@ -302,16 +302,15 @@ export function startBandwidthJob(): void {
               usageMbps = queueMbps;
             } else if (sharedMbps !== null) {
               // Shared bridge/monitor reading — split evenly across unthrottled sessions.
-              // Cap at a sane per-session maximum (bandwidth_limit_mbps or 50 Mbps)
-              // to prevent bridge-wide traffic (admin PC, server, etc.) from inflating readings.
               const perSessionMbps = sharedMbps / unthrottledCount;
-              const cap = (session.bandwidth_limit_mbps ?? 50) * 1.2; // 20% headroom above plan limit
+              const cap = (session.bandwidth_limit_mbps ?? 50) * 1.2;
               usageMbps = parseFloat(Math.min(perSessionMbps, cap).toFixed(2));
             } else {
-              // MikroTik reachable but no stats available yet — use simulation
-              usageMbps = simulateUsage();
+              // MikroTik reachable but bridge returned no stats — record 0, don't fabricate data
+              usageMbps = 0;
             }
           } else {
+            // No MikroTik configured — use simulation for demo/testing purposes only
             usageMbps = simulateUsage();
           }
 
