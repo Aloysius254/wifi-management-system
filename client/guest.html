@@ -126,16 +126,14 @@
 
   <!-- Enter Code Page -->
   <div id="page-code" class="card page active">
-    <div class="icon-box icon-blue">
-      <svg width="36" height="36" viewBox="0 0 24 24" fill="white">
-        <path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z"/>
-      </svg>
+    <div class="icon-box " style="font-size:2.2rem; display:flex; align-items:center; justify-content:center;">
+      🏨
     </div>
     <h1 style="color:#1e293b">Hotel WiFi</h1>
     <p class="subtitle">Enter your voucher code to connect</p>
     <form id="voucherForm">
       <label>Voucher Code</label>
-      <input id="codeInput" type="text" placeholder="E.G. A3BX9KPQ2T" maxlength="20" autocomplete="off" autocapitalize="characters" />
+      <input id="codeInput" type="text" placeholder="e.g. 8472-KXPQ" maxlength="20" autocomplete="off" autocapitalize="characters" inputmode="text" />
       <label>Your Name (optional)</label>
       <input id="nameInput" type="text" placeholder="e.g. John's Phone" style="text-transform:none;letter-spacing:normal" />
       <div id="errorMsg" class="error-box"></div>
@@ -285,6 +283,42 @@
       console.warn('Socket.IO setup failed:', e);
     });
 
+    // ── Heartbeat: poll server every 8s when connected ─────────────────────
+    // When session is revoked, MikroTik cuts access before socket message arrives.
+    // This polling detects the loss and shows the expired page immediately.
+    var heartbeatTimer = null;
+    function startHeartbeat() {
+      if (heartbeatTimer) return;
+      heartbeatTimer = setInterval(function() {
+        if (!currentSessionId) return;
+        fetch(API + '/sessions/' + currentSessionId + '/status', { method: 'GET' })
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (d.is_active === false || d.error) {
+              if (countdownTimer) clearInterval(countdownTimer);
+              currentSessionId = null;
+              showPage('page-expired');
+              var h1 = document.querySelector('#page-expired h1');
+              var sub = document.querySelector('#page-expired .subtitle');
+              if (h1) h1.textContent = 'Session Ended';
+              if (sub) sub.textContent = 'Your WiFi session has ended. Enter a new code to reconnect.';
+            }
+          })
+          .catch(function() {
+            // Can't reach server — session likely revoked, show portal
+            if (currentSessionId) {
+              if (countdownTimer) clearInterval(countdownTimer);
+              currentSessionId = null;
+              showPage('page-expired');
+              var h1 = document.querySelector('#page-expired h1');
+              var sub = document.querySelector('#page-expired .subtitle');
+              if (h1) h1.textContent = 'Connection Lost';
+              if (sub) sub.textContent = 'Your WiFi session has ended. Enter a new code to reconnect.';
+            }
+          });
+      }, 8000);
+    }
+
     function showPage(id) {
       document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
       document.getElementById(id).classList.add('active');
@@ -350,7 +384,7 @@
       fetch(API + '/vouchers/' + code + '/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ device_name: deviceName || friendlyDeviceName(), ip_address: clientIp })
+        body: JSON.stringify({ device_name: friendlyDeviceName(), guest_name: deviceName || null, ip_address: clientIp })
       }).then(function(r) {
         return r.json().then(function(d) { return { ok: r.ok, d: d }; });
       }).then(function(res) {
@@ -374,6 +408,7 @@
         } else {
           populateConnected(res.d);
           showPage('page-connected');
+          startHeartbeat();
         }
       }).catch(function() {
         document.getElementById('errorDetail').textContent = 'Cannot reach server. Try again.';

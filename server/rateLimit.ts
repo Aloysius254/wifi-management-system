@@ -1,7 +1,7 @@
 // In-memory rate limiter for voucher activation (prevents brute-force code guessing)
 const map = new Map<string, { count: number; since: number }>();
-const WINDOW_MS  = 15 * 60 * 1000; // 15 minutes
-const MAX_TRIES  = 5;
+const WINDOW_MS  = 10 * 60 * 1000; // 10 minutes
+const MAX_TRIES  = 3;
 
 export function checkRate(ip: string): true | number {
   const now  = Date.now();

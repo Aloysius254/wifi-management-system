@@ -138,17 +138,6 @@ async function getSessionQueueMbps(sessionId: number): Promise<number | null> {
 }
 
 /**
- * Simulate a realistic bandwidth reading as fallback when MikroTik is unavailable.
- */
-function simulateUsage(): number {
-  const roll = Math.random();
-  if (roll < 0.10) return parseFloat((9 + Math.random() * 5).toFixed(2));
-  if (roll < 0.30) return parseFloat((4 + Math.random() * 5).toFixed(2));
-  if (roll < 0.70) return parseFloat((1 + Math.random() * 3).toFixed(2));
-  return parseFloat((0.1 + Math.random() * 0.9).toFixed(2));
-}
-
-/**
  * Create a MikroTik simple queue to throttle a guest's bandwidth.
  * Queue name: "hotel-session-{sessionId}"
  * Max rate: bandwidth_limit_mbps (e.g. "2M/2M" for 2 Mbps up/down)
@@ -244,9 +233,13 @@ export function startBandwidthJob(): void {
   const hasMikrotik = !!process.env.MIKROTIK_HOST;
   const bridgeName  = process.env.MIKROTIK_BRIDGE || 'bridge';
 
+  // All bridge interfaces that carry guest traffic — main bridge + per-room bridges.
+  // Add new room bridges here as rooms are added.
+  const guestBridges = [bridgeName, 'bridge-room1', 'bridge-room2'];
+
   if (hasMikrotik) {
     console.log('[Bandwidth] Real MikroTik monitoring started (15s interval)');
-    console.log(`[Bandwidth] Bridge interface: ${bridgeName} — using counter diffing for pre-throttle stats`);
+    console.log(`[Bandwidth] Monitoring bridges: ${guestBridges.join(', ')} — using counter diffing`);
     console.log('[Bandwidth] Throttling via MikroTik simple queues enabled');
   } else {
     console.log('[Bandwidth] Simulation job started (15s interval) — set MIKROTIK_HOST to enable real monitoring');
@@ -268,8 +261,9 @@ export function startBandwidthJob(): void {
       if (sessions.length === 0) return;
 
       // ── Fetch shared bridge stats once for all sessions ───────────────────
-      // These are read once per cycle and split across sessions that don't
-      // have a per-session queue. This avoids N parallel requests to MikroTik.
+      // Read all guest bridges in parallel and sum their traffic.
+      // This covers guests on bridge-room1 (192.168.10.x) and bridge-room2 (192.168.20.x)
+      // as well as any devices still on the main bridge.
       let sharedMbps: number | null = null;
       if (hasMikrotik) {
         // Priority 1: hotel-monitor umbrella queue (resets each read — accurate per-interval)
@@ -277,8 +271,14 @@ export function startBandwidthJob(): void {
         if (monitorMbps !== null) {
           sharedMbps = monitorMbps;
         } else {
-          // Priority 2: bridge interface counter diff
-          sharedMbps = await getBridgeUsageMbps(bridgeName);
+          // Priority 2: sum counter diffs across all guest bridges in parallel
+          const bridgeReadings = await Promise.all(
+            guestBridges.map(b => getBridgeUsageMbps(b))
+          );
+          const validReadings = bridgeReadings.filter((v): v is number => v !== null);
+          if (validReadings.length > 0) {
+            sharedMbps = parseFloat(validReadings.reduce((a, b) => a + b, 0).toFixed(2));
+          }
         }
       }
 
@@ -310,8 +310,8 @@ export function startBandwidthJob(): void {
               usageMbps = 0;
             }
           } else {
-            // No MikroTik configured — use simulation for demo/testing purposes only
-            usageMbps = simulateUsage();
+            // No MikroTik configured — record 0, real monitoring requires MIKROTIK_HOST
+            usageMbps = 0;
           }
 
           // Write bandwidth sample

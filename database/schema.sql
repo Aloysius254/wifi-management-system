@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   voucher_id INT NOT NULL,
   device_mac VARCHAR(17),
   device_name VARCHAR(100),
+  guest_name VARCHAR(100),
   ip_address VARCHAR(45),
   user_agent TEXT,
   vap_id INT,

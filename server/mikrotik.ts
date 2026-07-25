@@ -62,41 +62,49 @@ export async function mikrotikAllowGuest(
 ): Promise<boolean> {
   if (!process.env.MIKROTIK_HOST) return false;
   try {
-    // Remove any stale entry for this IP first (idempotent)
-    await mikrotikRemoveGuestByIp(ip);
-
-    // RouterOS timeout format examples:
-    //   30 minutes  → "00:30:00"
-    //   2 hours     → "02:00:00"
-    //   24 hours    → "1d00:00:00"
-    //   48 hours    → "2d00:00:00"
     const days = Math.floor(durationHours / 24);
     const remH = durationHours % 24;
     const timeout = days > 0
       ? `${days}d${String(remH).padStart(2, '0')}:00:00`
       : `${String(durationHours).padStart(2, '0')}:00:00`;
 
-    // This RouterOS build requires PUT (not POST) to create address-list entries
-    const res = await fetch(`${MT_BASE()}/ip/firewall/address-list`, {
-      method: 'PUT',
-      headers: mtHeaders(),
-      body: JSON.stringify({
-        list: 'allowed_guests',
-        address: ip,
-        comment: `Session ${sessionId} - Room ${roomNumber}`,
-        timeout,
+    // Remove stale entry AND add new entry in parallel for speed
+    // Adding may fail if entry exists — that's fine, remove handles it
+    const [, addRes] = await Promise.all([
+      mikrotikRemoveGuestByIp(ip),
+      fetch(`${MT_BASE()}/ip/firewall/address-list`, {
+        method: 'PUT',
+        headers: mtHeaders(),
+        body: JSON.stringify({
+          list: 'allowed_guests',
+          address: ip,
+          comment: `Session ${sessionId} - Room ${roomNumber}`,
+          timeout,
+        }),
+        signal: AbortSignal.timeout(2000),
       }),
-      signal: AbortSignal.timeout(5000),
-    });
+    ]);
 
-    const responseText = await res.text();
-
-    if (!res.ok) {
-      console.error(`[MikroTik] Failed to allow ${ip}: ${res.status} ${responseText}`);
-      return false;
+    if (!addRes.ok) {
+      // If add failed due to duplicate (remove was racing), try once more
+      const retry = await fetch(`${MT_BASE()}/ip/firewall/address-list`, {
+        method: 'PUT',
+        headers: mtHeaders(),
+        body: JSON.stringify({
+          list: 'allowed_guests',
+          address: ip,
+          comment: `Session ${sessionId} - Room ${roomNumber}`,
+          timeout,
+        }),
+        signal: AbortSignal.timeout(2000),
+      });
+      if (!retry.ok) {
+        console.error(`[MikroTik] Failed to allow ${ip}: ${retry.status} ${await retry.text()}`);
+        return false;
+      }
     }
 
-    console.log(`[MikroTik] ✅ Allowed ${ip} (Session ${sessionId}, Room ${roomNumber}) for ${durationHours}h (timeout: ${timeout})`);
+    console.log(`[MikroTik] ✅ Allowed ${ip} (Session ${sessionId}, Room ${roomNumber}) for ${durationHours}h`);
     return true;
   } catch (e: any) {
     console.error(`[MikroTik] API error (allow): ${e.message}`);
@@ -119,7 +127,7 @@ export async function mikrotikRemoveGuestByIp(ip: string): Promise<boolean> {
     // 1. Fetch ALL entries in allowed_guests and filter client-side
     const res = await fetch(
       `${MT_BASE()}/ip/firewall/address-list?list=allowed_guests`,
-      { method: 'GET', headers: mtHeaders(), signal: AbortSignal.timeout(5000) }
+      { method: 'GET', headers: mtHeaders(), signal: AbortSignal.timeout(2000) }
     );
     if (!res.ok) {
       console.error(`[MikroTik] Failed to fetch address-list: ${res.status}`);
@@ -135,7 +143,7 @@ export async function mikrotikRemoveGuestByIp(ip: string): Promise<boolean> {
       await fetch(`${MT_BASE()}/ip/firewall/address-list/${entry['.id']}`, {
         method: 'DELETE',
         headers: mtHeaders(),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(2000),
       });
     }
 
@@ -163,7 +171,7 @@ async function mikrotikFlushConnections(ip: string): Promise<void> {
     // Get all connections where this IP is source or destination
     const res = await fetch(
       `${MT_BASE()}/ip/firewall/connection`,
-      { method: 'GET', headers: mtHeaders(), signal: AbortSignal.timeout(5000) }
+      { method: 'GET', headers: mtHeaders(), signal: AbortSignal.timeout(2000) }
     );
     if (!res.ok) {
       // Connection tracking endpoint may not be available — not fatal
@@ -187,7 +195,7 @@ async function mikrotikFlushConnections(ip: string): Promise<void> {
       const r = await fetch(`${MT_BASE()}/ip/firewall/connection/${conn['.id']}`, {
         method: 'DELETE',
         headers: mtHeaders(),
-        signal: AbortSignal.timeout(3000),
+        signal: AbortSignal.timeout(2000),
       });
       if (r.ok) removed++;
     }
@@ -325,7 +333,7 @@ export async function mikrotikAddBridgePort(
         interface: iface,
         pvid: '1', // Default PVID, will be updated by mikrotikAssignPortVlan
       }),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(2000),
     });
 
     // Some RouterOS builds require PUT instead of POST for creation
@@ -338,7 +346,7 @@ export async function mikrotikAddBridgePort(
           interface: iface,
           pvid: '1',
         }),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(2000),
       });
     }
 
@@ -583,7 +591,7 @@ export async function mikrotikSetupFirewall(guestInterface: string): Promise<{
   try {
     // Fetch existing forward rules
     const existing = await fetch(`${MT_BASE()}/ip/firewall/filter?chain=forward`, {
-      method: 'GET', headers: mtHeaders(), signal: AbortSignal.timeout(5000),
+      method: 'GET', headers: mtHeaders(), signal: AbortSignal.timeout(2000),
     });
     const rules: any[] = existing.ok ? (await existing.json() as any[]) : [];
 
@@ -605,7 +613,7 @@ export async function mikrotikSetupFirewall(guestInterface: string): Promise<{
           comment: 'Hotel WiFi — allow authenticated guests',
           place: 'top',
         }),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(2000),
       });
       if (r.ok) created.push('accept allowed_guests (forward)');
       else errors.push(`accept rule failed: ${r.status} ${await r.text()}`);
@@ -630,7 +638,7 @@ export async function mikrotikSetupFirewall(guestInterface: string): Promise<{
           'src-address-list': '!allowed_guests',
           comment: 'Hotel WiFi — block unauthenticated guests',
         }),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(2000),
       });
       if (r.ok) created.push(`drop !allowed_guests on ${guestInterface} (forward)`);
       else errors.push(`drop rule failed: ${r.status} ${await r.text()}`);
@@ -638,7 +646,7 @@ export async function mikrotikSetupFirewall(guestInterface: string): Promise<{
 
     // Rule 3: Also block in INPUT chain (prevent unauthenticated access to router itself)
     const inputRules: any[] = await (await fetch(`${MT_BASE()}/ip/firewall/filter?chain=input`, {
-      method: 'GET', headers: mtHeaders(), signal: AbortSignal.timeout(5000),
+      method: 'GET', headers: mtHeaders(), signal: AbortSignal.timeout(2000),
     })).json() as any[];
 
     const hasInputDrop = inputRules.some(r =>
@@ -659,7 +667,7 @@ export async function mikrotikSetupFirewall(guestInterface: string): Promise<{
           'src-address-list': '!allowed_guests',
           comment: 'Hotel WiFi — block unauthenticated access to router',
         }),
-        signal: AbortSignal.timeout(5000),
+        signal: AbortSignal.timeout(2000),
       });
       if (r.ok) created.push(`drop !allowed_guests on ${guestInterface} (input)`);
       else errors.push(`input drop rule failed: ${r.status} ${await r.text()}`);
@@ -688,9 +696,9 @@ export async function mikrotikGetFirewallStatus(): Promise<{
   }
   try {
     const [fwForward, fwInput, addrList] = await Promise.all([
-      fetch(`${MT_BASE()}/ip/firewall/filter?chain=forward`, { method: 'GET', headers: mtHeaders(), signal: AbortSignal.timeout(5000) }),
-      fetch(`${MT_BASE()}/ip/firewall/filter?chain=input`,   { method: 'GET', headers: mtHeaders(), signal: AbortSignal.timeout(5000) }),
-      fetch(`${MT_BASE()}/ip/firewall/address-list?list=allowed_guests`, { method: 'GET', headers: mtHeaders(), signal: AbortSignal.timeout(5000) }),
+      fetch(`${MT_BASE()}/ip/firewall/filter?chain=forward`, { method: 'GET', headers: mtHeaders(), signal: AbortSignal.timeout(2000) }),
+      fetch(`${MT_BASE()}/ip/firewall/filter?chain=input`,   { method: 'GET', headers: mtHeaders(), signal: AbortSignal.timeout(2000) }),
+      fetch(`${MT_BASE()}/ip/firewall/address-list?list=allowed_guests`, { method: 'GET', headers: mtHeaders(), signal: AbortSignal.timeout(2000) }),
     ]);
 
     const forwardRules: any[] = fwForward.ok ? await fwForward.json() as any[] : [];
@@ -736,7 +744,7 @@ export async function mikrotikFlushConntrack(ip: string): Promise<boolean> {
         '.proplist': '.id',
         'where': [`src-address~"${ip}"`, `dst-address~"${ip}"`],
       }),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(2000),
     });
 
     if (bulkRes.ok || bulkRes.status === 204 || bulkRes.status === 200) {
@@ -748,7 +756,7 @@ export async function mikrotikFlushConntrack(ip: string): Promise<boolean> {
     const listRes = await fetch(`${MT_BASE()}/ip/firewall/connection`, {
       method: 'GET',
       headers: mtHeaders(),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(2000),
     });
 
     if (!listRes.ok) return false;
@@ -772,7 +780,7 @@ export async function mikrotikFlushConntrack(ip: string): Promise<boolean> {
       fetch(`${MT_BASE()}/ip/firewall/connection/${conn['.id']}`, {
         method: 'DELETE',
         headers: mtHeaders(),
-        signal: AbortSignal.timeout(3000),
+        signal: AbortSignal.timeout(2000),
       }).catch(() => null)
     ));
 

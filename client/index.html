@@ -437,7 +437,7 @@ function SessionsTab({ token, reloadSignal, liveBandwidth = {} }) {
       <PageHeader title="Live Sessions">
         <RefreshBtn onClick={load} loading={loading} />
       </PageHeader>
-      <Tbl head={['#ID','Room','VAP/VLAN','Device','MAC','IP','Connected','Bandwidth','Status','Actions']}>
+      <Tbl head={['#ID','Room','VLAN','Guest','Device','IP','Connected','Bandwidth','Status','Actions']}>
         {sessions.length === 0
           ? <Tr><Td className="text-center py-10 text-slate-400" colSpan={10}>No active sessions</Td></Tr>
           : sessions.map(s => {
@@ -461,9 +461,9 @@ function SessionsTab({ token, reloadSignal, liveBandwidth = {} }) {
             <Tr key={s.id}>
               <Td><b className="text-blue-600">#{s.id}</b></Td>
               <Td><b>{s.room_number || '—'}</b></Td>
-              <Td>{s.vap_id ? <Badge color="blue">VAP-{s.vap_id} / VLAN-{s.vlan_id || '?'}</Badge> : <Badge color="yellow">No VAP</Badge>}</Td>
-              <Td className="max-w-[140px] truncate" title={s.device_name}>{s.device_name || '—'}</Td>
-              <Td><code className="text-xs bg-slate-100 px-1 rounded">{s.device_mac || '—'}</code></Td>
+              <Td>{s.vap_id ? <Badge color="blue">VLAN-{s.vlan_id || '?'}</Badge> : <Badge color="yellow">No VAP</Badge>}</Td>
+              <Td className="max-w-[120px] truncate text-slate-700" title={s.guest_name || ''}>{s.guest_name || <span className="text-slate-300">—</span>}</Td>
+              <Td className="max-w-[140px] truncate" title={s.device_name || ''}>{s.device_name || '—'}</Td>
               <Td><code className="text-xs bg-slate-100 px-1 rounded">{s.ip_address || '—'}</code></Td>
               <Td className="text-xs text-slate-400 whitespace-nowrap">{fmtTime(s.connected_at)}</Td>
               <Td>
@@ -565,7 +565,10 @@ function HistoryTab({ token }) {
                 {sessions.map((s) => (
                   <Tr key={s.id}>
                     <Td><b>{s.room_number || '—'}</b></Td>
-                    <Td>{s.device_name || '—'}</Td>
+                    <Td>
+                      {s.guest_name && <div className="font-semibold truncate">{s.guest_name}</div>}
+                      <div className={`truncate ${s.guest_name ? 'text-xs text-slate-400' : ''}`}>{s.device_name || '—'}</div>
+                    </Td>
                     <Td><code className="text-xs">{s.device_mac || '—'}</code></Td>
                     <Td><code className="text-xs">{s.ip_address || '—'}</code></Td>
                     <Td className="text-xs text-slate-400">{fmtTime(s.connected_at)}</Td>
@@ -1131,7 +1134,7 @@ function TopologyTab({ token }) {
       </Card>
       <Card title="How Client Isolation Works">
         <p className="text-sm text-slate-600 leading-relaxed">
-          Each room is assigned a <b>Virtual Access Point (VAP)</b> with a unique <b>VLAN ID</b> and <b>SSID</b> (e.g. <code className="bg-slate-100 px-1 rounded">Hotel_Room_101</code>).
+          Each room is assigned a <b>Virtual Access Point (VAP)</b> with a unique <b>VLAN ID</b> and <b>SSID</b> (e.g. <code className="bg-slate-100 px-1 rounded">Hotel_Room1</code>).
           Devices on different VAPs are isolated — they cannot see printers, shared drives, or other guests' devices.
           When a session exceeds the <b>throttle threshold</b>, its <code>is_throttled</code> flag is set and QoS rules would reduce
           that session's bandwidth on the physical router. The system auto-logs usage every 60 seconds.
@@ -2178,6 +2181,20 @@ function Dashboard({ token, onLogout, onTokenRefresh }) {
     return () => clearInterval(t);
   }, [tokenInfo]);
 
+  const [alerts, setAlerts] = useState([]); // bandwidth alert banners
+  const pushAlertRef = React.useRef(null);
+
+  function pushAlert(msg, type = 'warning') {
+    const id = Date.now();
+    setAlerts(p => [...p, { id, msg, type }]);
+    setTimeout(() => setAlerts(p => p.filter(a => a.id !== id)), 8000);
+    // Browser notification if permitted
+    if (Notification.permission === 'granted') {
+      new Notification('🏨 Hotel WiFi Alert', { body: msg, icon: '/favicon.ico' });
+    }
+  }
+  pushAlertRef.current = pushAlert;
+
   function showToast(msg, ok = true) {
     setToast({ msg, ok });
     setTimeout(() => setToast(null), 3500);
@@ -2217,12 +2234,18 @@ function Dashboard({ token, onLogout, onTokenRefresh }) {
     // Throttle state change — push to events feed and reload sessions list
     socket.on('session:throttle',    d   => {
       if (d.is_throttled) {
-        pushEvent('⚡', `Throttled: Session #${d.sessionId} Room ${d.room_number || '?'} — avg ${Number(d.avg_mbps).toFixed(2)} Mbps`);
+        const avgStr = d.avg_mbps ? `avg ${Number(d.avg_mbps).toFixed(2)} Mbps` : 'manually throttled';
+        const limitStr = d.threshold ? `limit: ${d.threshold} Mbps` : '';
+        const msg = `⚡ Room ${d.room_number || '?'} bandwidth throttled — ${avgStr}${limitStr ? ` (${limitStr})` : ''}`;
+        pushEvent('⚡', msg);
+        pushAlertRef.current?.(msg, 'warning');
       } else {
         pushEvent('✅', `Throttle lifted: Session #${d.sessionId} Room ${d.room_number || '?'} — avg ${Number(d.avg_mbps).toFixed(2)} Mbps`);
       }
       setReload(n => n + 1);
     });
+    // Request browser notification permission
+    if (Notification.permission === 'default') Notification.requestPermission();
     return () => socket.disconnect();
   }, []);
 
@@ -2234,6 +2257,15 @@ function Dashboard({ token, onLogout, onTokenRefresh }) {
           {toast.msg}
         </div>
       )}
+      {/* Bandwidth alert banners */}
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9998] flex flex-col gap-2 w-full max-w-lg px-4">
+        {alerts.map(a => (
+          <div key={a.id} className="bg-orange-500 text-white px-4 py-3 rounded-lg shadow-lg text-sm font-medium flex items-center justify-between gap-3 animate-pulse">
+            <span>{a.msg}</span>
+            <button onClick={() => setAlerts(p => p.filter(x => x.id !== a.id))} className="text-white/80 hover:text-white text-lg leading-none">×</button>
+          </div>
+        ))}
+      </div>
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
         <div className="flex items-center px-4 h-14 gap-1 flex-wrap">
           <span className="font-bold text-sm mr-2 whitespace-nowrap">🏨 Hotel WiFi</span>

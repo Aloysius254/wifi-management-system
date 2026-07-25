@@ -137,7 +137,7 @@ router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     // Fetch the session's IP and room info before closing it
     const [rows] = await pool.query<any[]>(
-      `SELECT s.ip_address, r.room_number, vap.vlan_id
+      `SELECT s.ip_address, s.device_mac, r.room_number, vap.vlan_id
        FROM sessions s
        LEFT JOIN vouchers v ON s.voucher_id = v.id
        LEFT JOIN rooms r ON v.room_id = r.id
@@ -148,6 +148,7 @@ router.delete('/:id', async (req: Request, res: Response): Promise<void> => {
     const sessionIp: string | null = rows[0]?.ip_address
       ? rows[0].ip_address.replace(/^::ffff:/, '').trim()
       : null;
+    const deviceMac: string | null = rows[0]?.device_mac ?? null;
     const roomNumber: string | null = rows[0]?.room_number ?? null;
     const vlanId: number | null = rows[0]?.vlan_id ?? null;
 
@@ -193,8 +194,11 @@ router.post('/:id/throttle', authenticate, async (req: AuthRequest, res: Respons
   const throttle: boolean = req.body?.throttle ?? true;
   try {
     const [rows] = await pool.query<any[]>(
-      `SELECT s.ip_address, vap.bandwidth_limit_mbps
-       FROM sessions s LEFT JOIN vaps vap ON s.vap_id = vap.id
+      `SELECT s.ip_address, vap.bandwidth_limit_mbps, r.room_number
+       FROM sessions s 
+       LEFT JOIN vaps vap ON s.vap_id = vap.id
+       LEFT JOIN vouchers v ON s.voucher_id = v.id
+       LEFT JOIN rooms r ON v.room_id = r.id
        WHERE s.id = ? AND s.is_active = TRUE`,
       [sessionId]
     );
@@ -202,6 +206,7 @@ router.post('/:id/throttle', authenticate, async (req: AuthRequest, res: Respons
 
     const ip: string | null = rows[0]?.ip_address?.replace(/^::ffff:/, '').trim() ?? null;
     const limitMbps: number = rows[0]?.bandwidth_limit_mbps ?? 2;
+    const roomNumber: string = rows[0]?.room_number ?? '?';
 
     if (ip) {
       if (throttle) {
@@ -213,10 +218,31 @@ router.post('/:id/throttle', authenticate, async (req: AuthRequest, res: Respons
     }
 
     await pool.query('UPDATE sessions SET is_throttled = ? WHERE id = ?', [throttle, sessionId]);
-    io.emit('session:throttle', { sessionId, is_throttled: throttle, manual: true });
+    io.emit('session:throttle', { 
+      sessionId, 
+      is_throttled: throttle, 
+      manual: true,
+      room_number: roomNumber,
+      avg_mbps: 0,
+      threshold: limitMbps,
+    });
     res.json({ ok: true, sessionId, throttled: throttle, ip, limitMbps });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/sessions/:id/status  (guest — no auth, used by heartbeat polling)
+router.get('/:id/status', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const [rows] = await pool.query<any[]>(
+      'SELECT id, is_active, disconnected_at FROM sessions WHERE id = ?',
+      [req.params.id]
+    );
+    if (!rows[0]) { res.json({ is_active: false, error: 'not_found' }); return; }
+    res.json({ is_active: rows[0].is_active === 1 || rows[0].is_active === true });
+  } catch {
+    res.status(500).json({ error: 'Failed' });
   }
 });
 

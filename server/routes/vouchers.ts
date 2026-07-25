@@ -8,6 +8,16 @@ import { logAction } from '../audit';
 import { checkRate, clearRate } from '../rateLimit';
 import { mikrotikAllowGuest, mikrotikRemoveGuestByIp, mikrotikAssignPortVlan, mikrotikReleasePortVlan, mikrotikFlushConntrack } from '../mikrotik';
 
+// Generate an 8-char code: 4 digits + 4 uppercase letters (e.g. 8472-KXPQ)
+// ~1.4 billion combinations — brute-force resistant, but easy to read and type
+function generateVoucherCode(): string {
+  const digits = String(Math.floor(1000 + Math.random() * 9000));
+  const letters = Array.from({ length: 4 }, () =>
+    'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random() * 24)] // skip I and O (look like 1/0)
+  ).join('');
+  return `${digits}-${letters}`;
+}
+
 const router = Router();
 
 // GET /api/vouchers  (admin)
@@ -57,13 +67,17 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<
 
     // Get room info for SMS
     let roomNumber = '';
+    let roomSsid = '';
     if (room_id) {
-      const [roomRows] = await pool.query<any[]>('SELECT room_number FROM rooms WHERE id = ?', [room_id]);
-      if (roomRows[0]) roomNumber = roomRows[0].room_number;
+      const [roomRows] = await pool.query<any[]>('SELECT room_number, ssid FROM rooms WHERE id = ?', [room_id]);
+      if (roomRows[0]) {
+        roomNumber = roomRows[0].room_number;
+        roomSsid = roomRows[0].ssid || '';
+      }
     }
 
     for (let i = 0; i < quantity; i++) {
-      const code = nanoid(10).toUpperCase();
+      const code = generateVoucherCode();
       const [result] = await pool.query<any>(
         'INSERT INTO vouchers (code, room_id, duration_hours, max_devices) VALUES (?, ?, ?, ?)',
         [code, room_id ?? null, duration_hours, max_devices]
@@ -74,7 +88,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<
       // Send SMS if phone number provided (only for single voucher)
       if (guest_phone && quantity === 1) {
         const guestPortalUrl = `${req.protocol}://${req.get('host')}/guest`;
-        const smsSent = await sendVoucherSMS(guest_phone, code, roomNumber, duration_hours, guestPortalUrl);
+        const smsSent = await sendVoucherSMS(guest_phone, code, roomNumber, duration_hours, guestPortalUrl, roomSsid);
         created[0].sms_sent = smsSent;
       }
     }
@@ -94,8 +108,8 @@ function randomMac(): string {
 }
 
 // Detect device model from User-Agent string
-function detectDevice(ua: string): string {
-  if (!ua) return 'Unknown Device';
+function detectDevice(ua: string, hostname?: string | null): string {
+  if (!ua) return hostname || 'Unknown Device';
   if (/iPhone/.test(ua)) {
     const m = ua.match(/iPhone OS ([\d_]+)/);
     return `iPhone (iOS ${m ? m[1].replace(/_/g, '.') : ''})`;
@@ -116,32 +130,48 @@ function detectDevice(ua: string): string {
   if (/Nokia/i.test(ua)) return 'Nokia Device';
   if (/realme/i.test(ua)) return 'Realme Device';
   if (/OnePlus/i.test(ua)) return 'OnePlus Device';
-  // Xiaomi hostname format: digits + letters (e.g. 2409BRN2CA, 23049PCD8G)
-  if (/^\d{4}[A-Z0-9]{4,}$/i.test(ua.trim())) return 'Xiaomi/Redmi Device';
-  // Generic Android — show brand from UA if available
+  // Generic Android — extract brand from Build string before falling back
   const androidBuild = ua.match(/;\s*([A-Za-z0-9_\- ]+)\s+Build\//);
-  if (androidBuild) return androidBuild[1].trim();
+  if (androidBuild) {
+    const brand = androidBuild[1].trim();
+    // If it's a raw Xiaomi/Redmi model code (e.g. "2409BRN2CA"), map to friendly name
+    if (/^\d{3,}[A-Z0-9]{3,}$/i.test(brand) && !/\s/.test(brand)) {
+      return 'Xiaomi/Redmi Device';
+    }
+    return brand;
+  }
   if (/Android/.test(ua)) {
     const ver = ua.match(/Android\s([\d.]+)/);
-    return `Android ${ver ? ver[1] : 'Device'}`;
+    // Use DHCP hostname if available and not a raw model code
+    if (hostname && hostname.length > 2 && !/^android/i.test(hostname) &&
+        !(/^\d{3,}[A-Z0-9]{3,}$/i.test(hostname.trim()) && !/\s/.test(hostname))) {
+      return hostname;
+    }
+    return `Android ${ver ? ver[1] : ''} Phone`.trim();
   }
   if (/Windows Phone/.test(ua)) return 'Windows Phone';
-  if (/Windows/.test(ua)) return 'Windows PC';
-  if (/Macintosh/.test(ua)) return 'Mac';
-  if (/Linux/.test(ua)) return 'Linux Device';
-  return 'Unknown Device';
+  if (/Windows/.test(ua)) return hostname || 'Windows PC';
+  if (/Macintosh/.test(ua)) return hostname || 'Mac';
+  if (/Linux/.test(ua)) return hostname || 'Linux Device';
+  return hostname || 'Unknown Device';
 }
 
 // POST /api/vouchers/:code/activate  (guest — no auth needed)
 router.post('/:code/activate', async (req: Request, res: Response): Promise<void> => {
-  const { device_name, ip_address } = req.body;
+  const { device_name, guest_name, ip_address } = req.body;
   const userAgent = req.headers['user-agent'] || '';
 
-  // Sanitize device_name — if it looks like a raw hostname/model code
-  // (no spaces, pure alphanumeric, e.g. "2409BRN2CA") treat it as unset
-  // and fall back to UA detection instead.
-  const isRawHostname = device_name && /^[A-Z0-9]{6,}$/i.test(device_name.trim()) && !/\s/.test(device_name);
-  const cleanDeviceName = isRawHostname ? null : (device_name || null);
+  // guest_name: explicitly typed by the guest in the name field (already separated client-side)
+  // Trim and null-out empty strings or raw model codes just in case
+  const isRawModelCode = (s: string) =>
+    /^\d{3,}[A-Z0-9]{3,}$/i.test(s.trim()) && !/\s/.test(s);
+
+  const guestName = (
+    guest_name &&
+    typeof guest_name === 'string' &&
+    guest_name.trim().length > 0 &&
+    !isRawModelCode(guest_name)
+  ) ? guest_name.trim() : null;
 
   // Normalize the client IP — strip IPv6-mapped prefix (::ffff:192.168.x.x → 192.168.x.x)
   function normalizeIp(raw: string | undefined): string | null {
@@ -162,9 +192,8 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
     res.status(429).json({ error: `Too many failed attempts. Try again in ${rateCheck} minute(s).` });
     return;
   }
-  // Auto-detect device model if user didn't provide a name
-  const detectedDevice = cleanDeviceName || detectDevice(userAgent);
-
+  // Always detect device model from User-Agent — never use guest-typed name as device name
+  const detectedDevice = detectDevice(userAgent);
   try {
     const [rows] = await pool.query<any[]>(
       'SELECT v.*, r.room_number FROM vouchers v LEFT JOIN rooms r ON v.room_id = r.id WHERE v.code = ? AND v.is_active = TRUE',
@@ -275,8 +304,8 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
     // Create session
     const deviceMac = randomMac();
     const [sessionResult] = await pool.query<any>(
-      'INSERT INTO sessions (voucher_id, device_name, device_mac, ip_address, user_agent, vap_id) VALUES (?, ?, ?, ?, ?, ?)',
-      [voucher.id, detectedDevice, deviceMac, clientIp, userAgent, vapId]
+      'INSERT INTO sessions (voucher_id, device_name, guest_name, device_mac, ip_address, user_agent, vap_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [voucher.id, detectedDevice, guestName, deviceMac, clientIp, userAgent, vapId]
     );
 
     const sessionId = sessionResult.insertId;
@@ -305,6 +334,33 @@ router.post('/:code/activate', async (req: Request, res: Response): Promise<void
       vap_id: vapId,
       connected_at: new Date(),
     });
+
+    // Try to improve device name from DHCP hostname in background (non-blocking)
+    // Runs when detectDevice() returned a generic fallback — DHCP hostname is more specific
+    const isGenericName = /^(Android \d+|Android Phone|Unknown Device|Xiaomi\/Redmi Device|Huawei Device|Samsung Galaxy|Tecno Device|Infinix Device|Itel Device|OPPO Device|Vivo Device|Nokia Device|Realme Device|OnePlus Device)$/i.test(detectedDevice);
+    if (clientIp && process.env.MIKROTIK_HOST && /Android/i.test(userAgent) && isGenericName) {
+      const MT_BASE = `http://${process.env.MIKROTIK_HOST}/rest`;
+      const MT_AUTH = 'Basic ' + Buffer.from(`${process.env.MIKROTIK_USER}:${process.env.MIKROTIK_PASS}`).toString('base64');
+      fetch(`${MT_BASE}/ip/dhcp-server/lease?address=${clientIp}`, {
+        headers: { Authorization: MT_AUTH },
+        signal: AbortSignal.timeout(3000),
+      }).then(r => r.ok ? r.json() : null).then((leases: any) => {
+        const hostname = leases?.[0]?.['host-name'];
+        const realMac = leases?.[0]?.['mac-address'];
+        if (hostname && hostname.length > 2 && !/^android/i.test(hostname)) {
+          // Never use raw model codes (e.g. "2409BRN2CA") as display names
+          const isRawCode = /^\d{3,}[A-Z0-9]{3,}$/i.test(hostname.trim()) && !/\s/.test(hostname);
+          if (!isRawCode) {
+            pool.query('UPDATE sessions SET device_name = ? WHERE id = ?', [hostname, sessionId]);
+            io.emit('session:updated', { sessionId, device_name: hostname });
+          }
+          // If it is a raw code, keep whatever detectDevice() returned (already set)
+        }
+        if (realMac) {
+          pool.query('UPDATE sessions SET device_mac = ? WHERE id = ?', [realMac, sessionId]);
+        }
+      }).catch(() => {});
+    }
 
     // Fetch VAP VLAN label if available
     let vapLabel: string | null = null;

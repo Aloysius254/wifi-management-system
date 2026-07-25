@@ -3,7 +3,6 @@ import { io } from './index';
 import { mikrotikRemoveGuestByIp, mikrotikReleasePortVlan, mikrotikFlushConntrack } from './mikrotik';
 import { mikrotikRemoveThrottleQueue } from './bandwidth';
 
-// Retention settings — configure in .env
 // VOUCHER_CLEANUP_HOURS   — how long to keep inactive vouchers (default: 48h)
 // SESSION_HISTORY_DAYS    — how long to keep ended session history (default: 30 days)
 // BANDWIDTH_LOG_DAYS      — how long to keep bandwidth logs (default: 7 days)
@@ -188,7 +187,8 @@ export function startExpiryJob() {
                LEFT JOIN rooms r ON v.room_id = r.id
                LEFT JOIN vaps vap ON s.vap_id = vap.id
                WHERE s.is_active = TRUE AND s.ip_address IS NOT NULL
-                 AND (v.expires_at IS NULL OR v.expires_at > NOW())`
+                 AND (v.expires_at IS NULL OR v.expires_at > NOW())
+                 AND s.connected_at < DATE_SUB(NOW(), INTERVAL 2 MINUTE)`
             );
 
             for (const session of activeSessions) {
