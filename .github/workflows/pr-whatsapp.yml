@@ -1,0 +1,39 @@
+name: PR opened -> WhatsApp
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+jobs:
+  notify:
+    # Skip drafts; they trigger again via ready_for_review.
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send WhatsApp message via WasenderAPI
+        env:
+          # PR fields are untrusted input: pass via env, never inline in the script.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          REPO: ${{ github.repository }}
+          WASENDER_API_KEY: ${{ secrets.WASENDER_API_TOKEN }}
+          WHATSAPP_TO: ${{ secrets.WHATSAPP_TO }}
+        run: |
+          set -euo pipefail
+
+          body="${PR_BODY:-No description provided.}"
+          if [ "${#body}" -gt 800 ]; then body="${body:0:800}..."; fi
+
+          text="$(printf '*New PR in %s*\n*%s*\nby %s (%s -> %s)\n\n%s\n\n%s' \
+            "$REPO" "$PR_TITLE" "$PR_AUTHOR" "$PR_HEAD" "$PR_BASE" "$body" "$PR_URL")"
+
+          payload="$(jq -n --arg to "$WHATSAPP_TO" --arg text "$text" '{to: $to, text: $text}')"
+
+          curl --fail-with-body -sS -X POST "https://www.wasenderapi.com/api/send-message" \
+            -H "Authorization: Bearer $WASENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$payload"
